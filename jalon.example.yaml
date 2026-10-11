@@ -1,0 +1,11 @@
+# Jalon configuration. Copy to ~/.jalon/config.yaml and adjust.
+# Every field is optional: without a config file, Jalon uses the values below.
+# `jalon hook prompt` reads the context size from the client (for Claude Code,
+# its transcript) and advises a reset past these thresholds; `jalon statusline`
+# only displays the size; `jalon context-report` replays the thresholds over your
+# Claude Code transcripts.
+context:
+  enabled: true
+  advise_tokens: 200000        # growth above the starting size (system prompt, tools) at which a reset is first advised
+  advise_step_tokens: 150000   # growth needed after an advice before the next one
+  stale_after_turns: 5         # tool results older than this many user turns count as stale

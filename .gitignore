@@ -1,0 +1,23 @@
+# Build output
+/jalon
+/bin/
+/dist/
+
+# Local data and config
+/config.yaml
+
+# Local secrets
+.env
+
+# Local tool files: Claude Code project files, the OpenSpec workspace
+/.claude/
+/openspec/
+
+# Written by Claude Code when it loads the mod from its folder
+/plugin/.claude-plugin/types/
+/plugin/tsconfig.json
+
+# Test and coverage output
+*.test
+*.out
+coverage.*

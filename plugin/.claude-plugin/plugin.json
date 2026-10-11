@@ -1,0 +1,14 @@
+{
+  "name": "jalon",
+  "version": "0.1.0",
+  "description": "Draws Jalon's pole above the prompt: three bands that fill as the context grows, full when a reset is advised",
+  "author": { "name": "Arnaud Lafon" },
+  "userConfig": {
+    "binary": {
+      "type": "string",
+      "title": "jalon binary",
+      "description": "Path of the jalon binary, or its name when it is on the PATH",
+      "default": "jalon"
+    }
+  }
+}

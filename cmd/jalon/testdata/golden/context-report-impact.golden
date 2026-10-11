@@ -1,0 +1,11 @@
+
+Impact (transcripts; estimates)
+  advice given 2: followed by a compaction 0, by a handoff 1, nothing seen 1; lead p50 1 turn
+  resets 3 (1 advised, 2 unprompted); handoff resumes not linked 1
+  prompt tokens read 41.2M; not re-read thanks to resets about 15.1M prompt tokens (27% of what would have been read)
+    of which after advice about 10.1M (18% of the same base)
+    estimate: assumes the conversations would have gone on the same way; all cache types counted together (93% cache read)
+  time              kind        before  after  requests  not re-read  advised
+  2026-10-09 14:02  handoff     311K    45K    38        10.1M        yes, lead 1
+  2026-10-09 16:30  compaction  180K    100K   62        5.0M         no
+  2026-10-09 17:00  compaction  150K    -      0         0.0M         no

@@ -1,0 +1,20 @@
+version: "2"
+
+# The standard linters (errcheck, govet, ineffassign, staticcheck, unused).
+# The presets drop the usual noise, such as an unchecked error from a deferred
+# Close.
+linters:
+  settings:
+    errcheck:
+      exclude-functions:
+        # Deferred after Begin: a no-op once the transaction is committed.
+        - (*database/sql.Tx).Rollback
+  exclusions:
+    presets:
+      - std-error-handling
+      - common-false-positives
+    rules:
+      # Test servers and fixtures ignore write errors on purpose.
+      - path: _test\.go
+        linters:
+          - errcheck

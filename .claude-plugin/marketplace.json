@@ -1,0 +1,12 @@
+{
+  "name": "jalon",
+  "owner": { "name": "Arnaud Lafon" },
+  "description": "Jalon, a context advisor for Claude Code: its optional mod",
+  "plugins": [
+    {
+      "name": "jalon",
+      "source": "./plugin",
+      "description": "Draws Jalon's pole above the prompt: three bands that fill as the context grows, full when a reset is advised"
+    }
+  ]
+}

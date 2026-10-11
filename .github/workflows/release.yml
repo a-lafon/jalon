@@ -1,0 +1,50 @@
+name: Release
+
+# A pushed v* tag builds cmd/jalon with GoReleaser (.goreleaser.yaml) and
+# publishes the GitHub Release for that tag.
+on:
+  push:
+    tags: ["v*"]
+
+# id-token and attestations: the provenance attestations of the archives.
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+# Every action is pinned to a commit, with its version as a comment: a tag can
+# be moved. Dependabot (github-actions) keeps the pins current.
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The changelog needs the history back to the previous tag.
+          fetch-depth: 0
+          # GoReleaser reads GITHUB_TOKEN from the environment.
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        with:
+          # The version `goreleaser check` and the snapshot were run with.
+          version: v2.18.3
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # A fine-grained token that writes the Homebrew tap only: GITHUB_TOKEN
+          # cannot write to another repository.
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+      # Lets `gh attestation verify <file> --repo a-lafon/jalon` show that an
+      # archive was built by this workflow from the tagged commit.
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            dist/*.tar.gz
+            dist/checksums.txt

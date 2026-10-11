@@ -1,0 +1,60 @@
+# The release built from a v* tag by .github/workflows/release.yml: the jalon
+# binary, cmd/jalon.
+# Check with `goreleaser check`; try with `goreleaser release --snapshot --clean`.
+version: 2
+
+project_name: jalon
+
+builds:
+  - id: jalon
+    main: ./cmd/jalon
+    binary: jalon
+    env:
+      - CGO_ENABLED=0
+    # No build-machine path in the binary, so the build is reproducible.
+    flags: [-trimpath]
+    goos: [darwin, linux]
+    goarch: [amd64, arm64]
+    # What jalon version prints: the tag without its v, the short commit, the build date.
+    ldflags:
+      - -s -w -X main.version={{ .Version }} -X main.commit={{ .ShortCommit }} -X main.date={{ .Date }}
+
+archives:
+  - formats: [tar.gz]
+    files:
+      - README.md
+      - LICENSE
+
+checksum:
+  name_template: checksums.txt
+
+# From the commits since the previous tag, newest first, without the commits
+# that only touch the specs or the process.
+changelog:
+  use: git
+  abbrev: 7
+  filters:
+    exclude:
+      - "^(Archive|Specify|Respecify|Amend|Record|Tick|Fill the Purpose) "
+
+# The Homebrew cask, pushed to the tap by a release (a snapshot or
+# --skip=publish writes it under dist/ and pushes nothing). The binaries are not
+# signed, so the post-install hook clears the quarantine Homebrew sets on what a
+# cask downloads. It never runs jalon or touches the client's settings: that is
+# `jalon init`, run by the user.
+homebrew_casks:
+  - name: jalon
+    repository:
+      owner: a-lafon
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Casks
+    homepage: https://github.com/a-lafon/jalon
+    description: "Context advisor for AI coding agents"
+    binaries: [jalon]
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/jalon"]
+          end

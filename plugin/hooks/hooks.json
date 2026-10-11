@@ -1,0 +1,4 @@
+{
+  "description": "The jalon pole, drawn above the prompt",
+  "modules": ["./register.tsx"]
+}
