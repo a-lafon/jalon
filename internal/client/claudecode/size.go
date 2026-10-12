@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+
+	"github.com/a-lafon/jalon/internal/client"
 )
 
 // Tail reads: transcripts reach tens of MB and the context size is the usage of
@@ -14,33 +16,38 @@ const (
 	tailMax   = 8 << 20
 )
 
-// ContextSize returns the size in tokens of the main conversation's context, as
-// of the end of the transcript at path. It is the first of these found when
-// scanning from the end:
+// readTail reads the end of the transcript at path once. The size is the main
+// conversation's context, as of the end of the transcript: the first of these
+// found when scanning from the end:
 //   - a compact_boundary entry: its compactMetadata.postTokens. When that field
 //     is missing there is no size at all;
 //   - an assistant entry that is not a sidechain, with usage: input, cache read
 //     and cache creation tokens, the sum of Claude Code's own
 //     context_window.total_input_tokens.
 //
+// Typed is whether the same part of the transcript holds a user entry, not a
+// sidechain, whose origin kind is "human": Claude Code writes it on a typed
+// prompt, and none on a claude -p prompt, a tool result or a meta message. With
+// a promptID, only the entry of that prompt counts.
+//
 // Lines that cannot be parsed, including the partial first line of a read, are
-// skipped. It reads the last 1 MB, then up to 8 MB when nothing usable is found.
-func contextSize(path string) (int, bool) {
+// skipped. It reads the last 1 MB, then up to 8 MB until it finds both.
+func readTail(path, promptID string) client.Tail {
 	f, err := os.Open(path)
 	if err != nil {
-		return 0, false
+		return client.Tail{}
 	}
 	defer f.Close()
 	fi, err := f.Stat()
 	if err != nil {
-		return 0, false
+		return client.Tail{}
 	}
 	for window := int64(tailStart); ; window *= 8 {
 		window = min(window, tailMax)
 		start := max(fi.Size()-window, 0)
 		buf := make([]byte, fi.Size()-start)
 		if _, err := f.ReadAt(buf, start); err != nil && err != io.EOF {
-			return 0, false
+			return client.Tail{}
 		}
 		if start > 0 {
 			// The first line of the window is usually cut.
@@ -50,19 +57,21 @@ func contextSize(path string) (int, bool) {
 				buf = nil
 			}
 		}
-		if size, done := lastSize(buf); done {
-			return size, size > 0
-		}
-		if start == 0 || window >= tailMax {
-			return 0, false
+		tail, sized := scanTail(buf, promptID)
+		if sized && tail.Typed || start == 0 || window >= tailMax {
+			return tail
 		}
 	}
 }
 
-type sizeEntry struct {
-	Type            string `json:"type"`
-	Subtype         string `json:"subtype"`
-	IsSidechain     bool   `json:"isSidechain"`
+type tailEntry struct {
+	Type        string `json:"type"`
+	Subtype     string `json:"subtype"`
+	IsSidechain bool   `json:"isSidechain"`
+	PromptID    string `json:"promptId"`
+	Origin      struct {
+		Kind string `json:"kind"`
+	} `json:"origin"`
 	CompactMetadata struct {
 		PostTokens *int `json:"postTokens"`
 	} `json:"compactMetadata"`
@@ -78,35 +87,42 @@ type sizeEntry struct {
 var (
 	usageMark   = []byte(`"usage"`)
 	compactMark = []byte(`compact_boundary`)
+	humanMark   = []byte(`"human"`)
 )
 
-// lastSize scans the lines of buf from the end. done is true when an entry
-// decided the size, even to say there is none.
-func lastSize(buf []byte) (size int, done bool) {
-	for end := len(buf); end > 0; {
+// scanTail scans the lines of buf from the end, until both the size and a
+// typed prompt are found. sized is true when an entry decided the size, even to
+// say there is none.
+func scanTail(buf []byte, promptID string) (tail client.Tail, sized bool) {
+	for end := len(buf); end > 0 && !(sized && tail.Typed); {
 		start := bytes.LastIndexByte(buf[:end], '\n') + 1
 		line := buf[start:end]
 		end = start - 1
-		// Cheap filter before parsing: most lines are neither.
-		if !bytes.Contains(line, usageMark) && !bytes.Contains(line, compactMark) {
+		// Cheap filter before parsing: most lines are none of these.
+		lookSize := !sized && (bytes.Contains(line, usageMark) || bytes.Contains(line, compactMark))
+		lookTyped := !tail.Typed && bytes.Contains(line, humanMark)
+		if !lookSize && !lookTyped {
 			continue
 		}
-		var e sizeEntry
+		var e tailEntry
 		if json.Unmarshal(line, &e) != nil {
 			continue
 		}
 		switch {
+		case lookTyped && e.Type == "user" && !e.IsSidechain && e.Origin.Kind == "human":
+			tail.Typed = promptID == "" || e.PromptID == promptID
+		case !lookSize:
 		case e.Type == "system" && e.Subtype == "compact_boundary":
-			if e.CompactMetadata.PostTokens == nil {
-				return 0, true
+			sized = true
+			if e.CompactMetadata.PostTokens != nil {
+				tail.Size = *e.CompactMetadata.PostTokens
 			}
-			return *e.CompactMetadata.PostTokens, true
 		case e.Type == "assistant" && !e.IsSidechain && e.Message.Usage != nil:
 			u := e.Message.Usage
 			if n := u.Input + u.CacheRead + u.CacheCreation; n > 0 {
-				return n, true
+				tail.Size, sized = n, true
 			}
 		}
 	}
-	return 0, false
+	return tail, sized
 }

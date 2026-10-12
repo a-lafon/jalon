@@ -148,7 +148,7 @@ func TestStopHookAdvisingWritesTheStateAndTheHandoffFolder(t *testing.T) {
 	_, cfg := hookState(t, "s1", 100_000)
 	repo := gitRepo(t)
 	runPrompt(t, cfg, promptInput("s1", "p1", repo))
-	appendTranscript(t, "s1", assistantLine(212_000))
+	appendTranscript(t, "s1", typedPrompt("p1"), assistantLine(212_000))
 	home := os.Getenv("HOME")
 	homeBefore, repoBefore := tree(t, home), tree(t, repo)
 	if got := runStop(t, cfg, stopInput("s1", "p1", repo, "Done.", false)); got == "" {

@@ -65,20 +65,20 @@ func TestGoldenHook(t *testing.T) {
 		cwd    string // "repo", "repo/sub", "plain" (not a git repository) or ""
 		prompt int    // how many prompts are submitted
 	}{
-		"crossing":          {[]string{assistantLine(50_000), assistantLine(212_000)}, "repo", 1},
-		"crossing-subdir":   {[]string{assistantLine(50_000), assistantLine(212_000)}, "repo/sub", 1},
-		"crossing-plain":    {[]string{assistantLine(50_000), assistantLine(212_000)}, "plain", 1},
-		"crossing-no-cwd":   {[]string{assistantLine(50_000), assistantLine(212_000)}, "", 1},
-		"repeat":            {[]string{assistantLine(50_000), assistantLine(212_000)}, "repo", 2},
-		"below":             {[]string{assistantLine(120_000)}, "repo", 1},
-		"after-compaction":  {[]string{assistantLine(50_000), assistantLine(300_000), `{"type":"system","subtype":"compact_boundary","compactMetadata":{"postTokens":15000}}` + "\n"}, "repo", 1},
-		"sidechain-ignored": {[]string{assistantLine(startSize), assistantLine(212_000), `{"type":"assistant","isSidechain":true,"message":{"usage":{"input_tokens":5}}}` + "\n"}, "repo", 1},
+		"crossing":          {[]string{typedPrompt("p0"), assistantLine(50_000), assistantLine(212_000)}, "repo", 1},
+		"crossing-subdir":   {[]string{typedPrompt("p0"), assistantLine(50_000), assistantLine(212_000)}, "repo/sub", 1},
+		"crossing-plain":    {[]string{typedPrompt("p0"), assistantLine(50_000), assistantLine(212_000)}, "plain", 1},
+		"crossing-no-cwd":   {[]string{typedPrompt("p0"), assistantLine(50_000), assistantLine(212_000)}, "", 1},
+		"repeat":            {[]string{typedPrompt("p0"), assistantLine(50_000), assistantLine(212_000)}, "repo", 2},
+		"below":             {[]string{typedPrompt("p0"), assistantLine(120_000)}, "repo", 1},
+		"after-compaction":  {[]string{typedPrompt("p0"), assistantLine(50_000), assistantLine(300_000), `{"type":"system","subtype":"compact_boundary","compactMetadata":{"postTokens":15000}}` + "\n"}, "repo", 1},
+		"sidechain-ignored": {[]string{typedPrompt("p0"), assistantLine(startSize), assistantLine(212_000), `{"type":"assistant","isSidechain":true,"message":{"usage":{"input_tokens":5}}}` + "\n"}, "repo", 1},
 		// The conversation starts at 212K: nothing a reset can remove, so no advice.
-		"heavy-start":       {[]string{assistantLine(212_000)}, "repo", 1},
-		"heavy-start-grown": {[]string{assistantLine(230_000), assistantLine(385_000)}, "repo", 1},
+		"heavy-start":       {[]string{typedPrompt("p0"), assistantLine(212_000)}, "repo", 1},
+		"heavy-start-grown": {[]string{typedPrompt("p0"), assistantLine(230_000), assistantLine(385_000)}, "repo", 1},
 		"no-usage":          {[]string{`{"type":"user"}` + "\n"}, "repo", 1},
 		// The agent cd'ed out of the project: the folder stays in the project.
-		"crossing-moved-cwd": {[]string{assistantLine(50_000), assistantLine(212_000)}, "plain", 1},
+		"crossing-moved-cwd": {[]string{typedPrompt("p0"), assistantLine(50_000), assistantLine(212_000)}, "plain", 1},
 	}
 	// CLAUDE_PROJECT_DIR for the cases that set it; useHome empties it for the others.
 	projects := map[string]string{"crossing-moved-cwd": "repo/sub"}
@@ -127,9 +127,9 @@ func TestGoldenStopHook(t *testing.T) {
 		last          string   // the turn's last assistant message
 	}{
 		// Advised at the prompt, the reply lacks the section.
-		"reminder": {[]string{assistantLine(startSize), assistantLine(274_000)}, []string{assistantLine(280_000)}, "Le fichier de reprise est écrit."},
+		"reminder": {[]string{typedPrompt("p0"), assistantLine(startSize), assistantLine(274_000)}, []string{assistantLine(280_000)}, "Le fichier de reprise est écrit."},
 		// Below the threshold at the prompt, past it at the end of the turn.
-		"crossing": {[]string{assistantLine(startSize), assistantLine(150_000)}, []string{assistantLine(296_000)}, "Done."},
+		"crossing": {[]string{typedPrompt("p0"), assistantLine(startSize), assistantLine(150_000)}, []string{assistantLine(296_000)}, "Done."},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -138,7 +138,7 @@ func TestGoldenStopHook(t *testing.T) {
 			repo := gitRepo(t)
 			appendTranscript(t, "s1", tt.before...)
 			runPrompt(t, cfg, promptInput("s1", "p1", repo))
-			appendTranscript(t, "s1", tt.after...)
+			appendTranscript(t, "s1", append([]string{typedPrompt("p1")}, tt.after...)...)
 			out := runStop(t, cfg, stopInput("s1", "p1", repo, tt.last, false))
 			checkGolden(t, "stop-"+name+".golden", strings.ReplaceAll(out, repo, "<repo>"))
 			state, _ := os.ReadFile(filepath.Join(dir, "s1.json"))

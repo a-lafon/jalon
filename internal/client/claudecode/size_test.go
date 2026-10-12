@@ -48,7 +48,7 @@ func TestContextSize(t *testing.T) {
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			got, ok := contextSize(writeLines(t, tt.lines...))
+			got, ok := sizeOf(writeLines(t, tt.lines...))
 			if got != tt.want || ok != tt.ok {
 				t.Errorf("size = %d, %v; want %d, %v", got, ok, tt.want, tt.ok)
 			}
@@ -57,15 +57,15 @@ func TestContextSize(t *testing.T) {
 }
 
 func TestContextSizeMissingOrEmptyFile(t *testing.T) {
-	if _, ok := contextSize(filepath.Join(t.TempDir(), "nope.jsonl")); ok {
+	if _, ok := sizeOf(filepath.Join(t.TempDir(), "nope.jsonl")); ok {
 		t.Error("a missing file has no size")
 	}
-	if _, ok := contextSize(""); ok {
+	if _, ok := sizeOf(""); ok {
 		t.Error("an empty path has no size")
 	}
 	empty := filepath.Join(t.TempDir(), "e.jsonl")
 	os.WriteFile(empty, nil, 0o600)
-	if _, ok := contextSize(empty); ok {
+	if _, ok := sizeOf(empty); ok {
 		t.Error("an empty file has no size")
 	}
 }
@@ -93,14 +93,14 @@ func bigFile(t *testing.T, head []string, total int, tail []string) string {
 func TestContextSizeExtendsBackwardsWhenTheTailHasNone(t *testing.T) {
 	// The last entry with a size is about 3 MB from the end: beyond the first 1 MB.
 	path := bigFile(t, []string{sizeLine(333_000, false)}, 3<<20, nil)
-	if got, ok := contextSize(path); !ok || got != 333_000 {
+	if got, ok := sizeOf(path); !ok || got != 333_000 {
 		t.Errorf("size = %d, %v; want 333000 found beyond the first 1 MB", got, ok)
 	}
 }
 
 func TestContextSizeGivesUpBeyond8MB(t *testing.T) {
 	path := bigFile(t, []string{sizeLine(333_000, false)}, 9<<20, nil)
-	if got, ok := contextSize(path); ok {
+	if got, ok := sizeOf(path); ok {
 		t.Errorf("size = %d, want none past the 8 MB limit", got)
 	}
 }
@@ -109,11 +109,65 @@ func TestContextSizeOfALargeTranscriptIsFast(t *testing.T) {
 	// A 10 MB transcript whose last entries are at the end, as in practice.
 	path := bigFile(t, []string{sizeLine(1_000, false)}, 10<<20, []string{sizeLine(250_000, false), userLine})
 	start := time.Now()
-	got, ok := contextSize(path)
+	got, ok := sizeOf(path)
 	if !ok || got != 250_000 {
 		t.Fatalf("size = %d, %v", got, ok)
 	}
 	if d := time.Since(start); d > 200*time.Millisecond {
 		t.Errorf("took %v for a 10 MB transcript, the hook has 500 ms in all", d)
+	}
+}
+
+// sizeOf is the size readTail finds, and whether it found one.
+func sizeOf(path string) (int, bool) {
+	tail := readTail(path, "")
+	return tail.Size, tail.Size > 0
+}
+
+// typedLine is a prompt entry as Claude Code writes it: origin kind "human" when
+// a person typed it, no origin when claude -p sent it.
+func typedLine(promptID string, human, sidechain bool) string {
+	origin := ""
+	if human {
+		origin = `"origin":{"kind":"human"},`
+	}
+	return fmt.Sprintf(`{"type":"user",%s"isSidechain":%t,"promptId":%q,"message":{"role":"user","content":"a human request"}}`, origin, sidechain, promptID)
+}
+
+func TestReadTailTyped(t *testing.T) {
+	toolResult := `{"type":"user","promptId":"p1","message":{"role":"user","content":[{"type":"tool_result","content":"\"human\""}]}}`
+	tests := map[string]struct {
+		lines             []string
+		anyTyped, p1Typed bool
+	}{
+		"typed prompt":             {[]string{typedLine("p1", true, false), sizeLine(60_000, false)}, true, true},
+		"claude -p prompt":         {[]string{typedLine("p1", false, false), toolResult, sizeLine(60_000, false)}, false, false},
+		"typed earlier, -p now":    {[]string{typedLine("p0", true, false), sizeLine(50_000, false), typedLine("p1", false, false), sizeLine(60_000, false)}, true, false},
+		"typed in a subagent only": {[]string{typedLine("p1", true, true), sizeLine(60_000, false)}, false, false},
+		"typed after the size":     {[]string{sizeLine(60_000, false), typedLine("p1", true, false)}, true, true},
+		"typed, no size":           {[]string{typedLine("p1", true, false)}, true, true},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			path := writeLines(t, tt.lines...)
+			if got := readTail(path, ""); got.Typed != tt.anyTyped {
+				t.Errorf("any prompt typed = %v, want %v", got.Typed, tt.anyTyped)
+			}
+			if got := readTail(path, "p1"); got.Typed != tt.p1Typed {
+				t.Errorf("p1 typed = %v, want %v", got.Typed, tt.p1Typed)
+			}
+		})
+	}
+}
+
+func TestReadTailLooksForTheTypedPromptAsFarAsForTheSize(t *testing.T) {
+	// A long turn: the prompt is 3 MB before the end, the size at the end.
+	path := bigFile(t, []string{typedLine("p1", true, false)}, 3<<20, []string{sizeLine(250_000, false)})
+	if got := readTail(path, "p1"); !got.Typed || got.Size != 250_000 {
+		t.Errorf("tail = %+v, want p1 typed and size 250000", got)
+	}
+	path = bigFile(t, []string{typedLine("p1", true, false)}, 9<<20, []string{sizeLine(250_000, false)})
+	if got := readTail(path, "p1"); got.Typed || got.Size != 250_000 {
+		t.Errorf("tail = %+v, want p1 out of reach past 8 MB and size 250000", got)
 	}
 }

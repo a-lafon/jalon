@@ -125,7 +125,9 @@ func runPromptHook(ctx context.Context, args []string, stdin io.Reader, out io.W
 				_ = advisor.SetHandoff(dir, prompt.Session, name, threadOf(name), "")
 			}
 		}
-		st, ok := measure(dir, adapter, prompt, cfg, now)
+		// The prompt is not in the transcript yet: any typed prompt before it
+		// shows the session is typed in.
+		st, ok := measure(dir, adapter, prompt, adapter.ReadTail(prompt, ""), cfg, now)
 		if !ok {
 			return nil
 		}
@@ -190,6 +192,13 @@ func runStopHook(ctx context.Context, args []string, stdin io.Reader, out io.Wri
 		if !ok || st.Prompt != ev.ID {
 			return nil
 		}
+		// A program that runs claude -p reads the last message as its output: a
+		// block would replace it. Only a turn whose prompt a person typed is
+		// blocked.
+		tail := adapter.ReadTail(ev.Prompt, ev.ID)
+		if !tail.Typed {
+			return nil
+		}
 		cfg, err := cli.LoadConfig(flags, *configPath)
 		if err != nil || !cfg.Context.Enabled {
 			return nil
@@ -216,7 +225,7 @@ func runStopHook(ctx context.Context, args []string, stdin io.Reader, out io.Wri
 			return reply
 		}
 
-		st, ok = measure(dir, adapter, ev.Prompt, cfg, now)
+		st, ok = measure(dir, adapter, ev.Prompt, tail, cfg, now)
 		if !ok {
 			return nil
 		}
@@ -238,13 +247,14 @@ func runStopHook(ctx context.Context, args []string, stdin io.Reader, out io.Wri
 }
 
 // measure records the context size of the turn of p in the session's state,
-// with the floor when the state holds none, and runs the advisor. It returns
-// the state, and true when a reset is advised.
-func measure(dir string, adapter client.Adapter, p client.Prompt, cfg config.Config, now time.Time) (advisor.Session, bool) {
+// read from the transcript's tail, with the floor when the state holds none,
+// and runs the advisor. It returns the state, and true when a reset is advised
+// in a session typed in by a person: a session a program drives, even resumed,
+// is never advised, since the reply is the program's output.
+func measure(dir string, adapter client.Adapter, p client.Prompt, tail client.Tail, cfg config.Config, now time.Time) (advisor.Session, bool) {
 	// The size is read from the client's own record of the conversation, so
 	// the hook needs no status line.
-	size, ok := adapter.ContextSize(p)
-	if !ok || advisor.Record(dir, p.Session, size, now, p.ID) != nil {
+	if tail.Size <= 0 || advisor.Record(dir, p.Session, tail.Size, now, p.ID, tail.Typed) != nil {
 		return advisor.Session{}, false
 	}
 	st, ok := advisor.Load(dir, p.Session)
@@ -260,7 +270,7 @@ func measure(dir string, adapter client.Adapter, p client.Prompt, cfg config.Con
 	}
 	advice, _ := advisor.Advise(advisor.State{LastAdvised: st.LastAdvised}, st.Size, st.Floor,
 		advisor.Config{AdviseTokens: cfg.Context.AdviseTokens, StepTokens: cfg.Context.AdviseStepTokens})
-	return st, advice.Kind == advisor.Reset
+	return st, advice.Kind == advisor.Reset && st.Typed
 }
 
 // recordAdvice does what an advice at the state's size needs before it is

@@ -155,14 +155,13 @@ func TestStatusSize(t *testing.T) {
 	}
 }
 
-func TestContextSizeReadsTheTranscriptOfThePrompt(t *testing.T) {
-	path := writeLines(t, sizeLine(212_000, false))
-	size, ok := Adapter{}.ContextSize(client.Prompt{Ref: path})
-	if !ok || size != 212_000 {
-		t.Errorf("= %d, %v", size, ok)
+func TestReadTailReadsTheTranscriptOfThePrompt(t *testing.T) {
+	path := writeLines(t, typedLine("p1", true, false), sizeLine(212_000, false))
+	if got := (Adapter{}).ReadTail(client.Prompt{Ref: path}, "p1"); got != (client.Tail{Size: 212_000, Typed: true}) {
+		t.Errorf("tail = %+v", got)
 	}
-	if _, ok := (Adapter{}).ContextSize(client.Prompt{}); ok {
-		t.Error("a prompt without a transcript has a size")
+	if got := (Adapter{}).ReadTail(client.Prompt{}, ""); got != (client.Tail{}) {
+		t.Errorf("a prompt without a transcript has %+v", got)
 	}
 }
 

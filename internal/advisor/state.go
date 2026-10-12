@@ -35,6 +35,10 @@ type Session struct {
 	// by them.
 	Prompt        string `json:"prompt,omitempty"`
 	AdvisedPrompt string `json:"advised_prompt,omitempty"`
+	// Typed is true once the transcript has shown a prompt typed by a person in
+	// the session: only such a session is advised, never one a program drives.
+	// It is kept, since a long turn can push that prompt out of the part read.
+	Typed bool `json:"typed,omitempty"`
 }
 
 // SafeSessionID reports whether id can name a state file: letters, digits, "-"
@@ -73,10 +77,11 @@ func Load(dir, id string) (Session, bool) {
 	return s, true
 }
 
-// Record stores the latest size of a session and the ID of the prompt of its
-// turn. When the size fell under half of the previous one, as after a
-// compaction, the last advised size is reset.
-func Record(dir, id string, size int, now time.Time, prompt string) error {
+// Record stores the latest size of a session, the ID of the prompt of its turn,
+// and that the session is typed in by a person once typed is true. When the
+// size fell under half of the previous one, as after a compaction, the last
+// advised size is reset.
+func Record(dir, id string, size int, now time.Time, prompt string, typed bool) error {
 	if !SafeSessionID(id) {
 		return errors.New("unsafe session id")
 	}
@@ -85,6 +90,7 @@ func Record(dir, id string, size int, now time.Time, prompt string) error {
 		s.LastAdvised = 0
 	}
 	s.Size, s.Recorded, s.Prompt = size, now, prompt
+	s.Typed = s.Typed || typed
 	return write(dir, id, s)
 }
 

@@ -27,6 +27,16 @@ type Prompt struct {
 	Ref string
 }
 
+// Tail is what the end of the client's record of the conversation shows.
+type Tail struct {
+	// Size is the size in tokens of the main conversation's context, 0 when it
+	// cannot be told.
+	Size int
+	// Typed is true when it shows a prompt typed by a person, not sent by a
+	// program; when a prompt ID was asked for, only that prompt counts.
+	Typed bool
+}
+
 // Stop is a stop event: the model ended its turn.
 type Stop struct {
 	// Prompt holds the session, the ID of the prompt that started the turn, the
@@ -65,9 +75,10 @@ type Adapter interface {
 	Name() string
 	// ReadPrompt parses the client's prompt hook input.
 	ReadPrompt(stdin []byte) (Prompt, error)
-	// ContextSize is the size in tokens of the main conversation's context, and
-	// false when it cannot be told.
-	ContextSize(Prompt) (int, bool)
+	// ReadTail reads the end of the conversation of p once: the context size,
+	// and whether a prompt typed by a person shows, the one with ID promptID
+	// when it is not "".
+	ReadTail(p Prompt, promptID string) Tail
 	// ContextFloor is the size in tokens of the conversation's first request,
 	// which a reset cannot remove, and false when it cannot be told yet.
 	ContextFloor(Prompt) (int, bool)
