@@ -251,6 +251,29 @@ func TestCwdIsTheFirstOneRecorded(t *testing.T) {
 	}
 }
 
+func TestReadDirSkipsAFileDeletedAfterTheListing(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "p"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"gone.jsonl", "kept.jsonl"} {
+		if err := os.WriteFile(filepath.Join(dir, "p", name), []byte(userText("2026-10-06T08:00:00Z", "x")+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	defer func(orig func(string) (*os.File, error)) { openFile = orig }(openFile)
+	openFile = func(path string) (*os.File, error) {
+		if filepath.Base(path) == "gone.jsonl" {
+			os.Remove(path) // deleted between the listing and the open
+		}
+		return os.Open(path)
+	}
+	convs, err := NewReader().ReadDir(dir, time.Time{})
+	if err != nil || len(convs) != 1 || filepath.Base(convs[0].File) != "kept.jsonl" {
+		t.Fatalf("convs = %+v, err %v, want kept.jsonl only", convs, err)
+	}
+}
+
 func advice(uuid, ts, content string) string {
 	return fmt.Sprintf(`{"type":"attachment","uuid":%q,"timestamp":%q,"sessionId":"s1","attachment":{"type":"hook_system_message","content":%q,"hookName":"UserPromptSubmit","hookEvent":"UserPromptSubmit"}}`,
 		uuid, ts, content)

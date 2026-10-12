@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -196,6 +197,9 @@ func (r *Reader) ReadDir(dir string, since time.Time) ([]Conversation, error) {
 	var out []Conversation
 	for _, f := range files {
 		c, err := r.ReadFile(f.path)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue // deleted since it was listed
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -204,9 +208,12 @@ func (r *Reader) ReadDir(dir string, since time.Time) ([]Conversation, error) {
 	return out, nil
 }
 
+// openFile opens a session file; tests replace it.
+var openFile = os.Open
+
 // ReadFile reads one session file.
 func (r *Reader) ReadFile(path string) (Conversation, error) {
-	f, err := os.Open(path)
+	f, err := openFile(path)
 	if err != nil {
 		return Conversation{}, err
 	}
