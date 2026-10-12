@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io/fs"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -110,8 +111,9 @@ func Thousands(n int64) string {
 	return s
 }
 
-// TokensK formats a token count in Thousands, as in the status line: 230K.
-func TokensK(v float64) string { return fmt.Sprintf("%.0fK", v/1000) }
+// TokensK formats a token count in thousands, an exact half rounded up, as in
+// the status line: 230K.
+func TokensK(v float64) string { return fmt.Sprintf("%.0fK", math.Floor(v/1000+0.5)) }
 
 func Percent(v float64) string { return fmt.Sprintf("%.1f%%", v*100) }
 

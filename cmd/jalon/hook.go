@@ -151,7 +151,7 @@ func runPromptHook(ctx context.Context, args []string, stdin io.Reader, out io.W
 		if !ok {
 			return nil
 		}
-		kTokens := thousandsK(st.Size)
+		kTokens := cli.TokensK(float64(st.Size))
 		reply, err := adapter.Reply(
 			advisor.MessagePrefix+kTokens+" tokens, a reset proposal follows the answer.",
 			strings.ReplaceAll(promptOpening, "{tokens}", strings.TrimSuffix(kTokens, "K"))+body)
@@ -229,7 +229,7 @@ func runStopHook(ctx context.Context, args []string, stdin io.Reader, out io.Wri
 				return nil
 			}
 			handoffDir := handoffFolder(ev.Dir)
-			reason := reminderPrefix + ", context at " + thousandsK(st.LastAdvised) +
+			reason := reminderPrefix + ", context at " + cli.TokensK(float64(st.LastAdvised)) +
 				" tokens: your reply did not end with the section asked at the start of this turn. Do not repeat your answer.\n"
 			if written := lastHandoff(handoffDir, st.Proposed+"-"); st.Proposed != "" && written != "" {
 				reason += "The handoff " + filepath.Join(handoffDir, written) + " is already written: do not write another file, give the section with its lines to copy for it.\n"
@@ -253,7 +253,7 @@ func runStopHook(ctx context.Context, args []string, stdin io.Reader, out io.Wri
 		if !ok {
 			return nil
 		}
-		kTokens := thousandsK(st.Size)
+		kTokens := cli.TokensK(float64(st.Size))
 		reply, err := stopper.StopReply(
 			strings.ReplaceAll(stopOpening, "{tokens}", strings.TrimSuffix(kTokens, "K"))+body,
 			advisor.MessagePrefix+kTokens+" tokens, a reset proposal follows.")
