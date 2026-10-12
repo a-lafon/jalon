@@ -184,7 +184,7 @@ func TestSweepDeletesOnlyOldStateFiles(t *testing.T) {
 	Sweep(filepath.Join(dir, "missing"), t0, time.Hour) // no folder: no panic
 }
 
-func TestSweepTouchesNothingButOldStateFiles(t *testing.T) {
+func TestSweepTouchesNothingButOldStateAndTempFiles(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "sessions")
 	old := t0.Add(-30 * 24 * time.Hour)
@@ -194,6 +194,7 @@ func TestSweepTouchesNothingButOldStateFiles(t *testing.T) {
 		"sessions/sub/s2.json":     `{"size":1,"recorded":"2026-09-01T00:00:00Z"}`,
 		"sessions/notes.txt":       "keep",
 		"sessions/.tmp-123":        "keep",
+		"sessions/.tmp-456":        "{",
 		"handoffs/2026-09-01/a.md": "keep",
 	} {
 		p := filepath.Join(root, path)
@@ -205,6 +206,8 @@ func TestSweepTouchesNothingButOldStateFiles(t *testing.T) {
 		}
 		os.Chtimes(p, old, old)
 	}
+	// A fresh temporary file may be a write in progress; an old one is a leftover.
+	os.Chtimes(filepath.Join(dir, ".tmp-123"), t0, t0)
 	Sweep(dir, t0, 7*24*time.Hour)
 	left := map[string]bool{}
 	filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
