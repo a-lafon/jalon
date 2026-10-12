@@ -56,11 +56,11 @@ func runStatusline(ctx context.Context, args []string, stdin io.Reader, out io.W
 		var buf bytes.Buffer
 		buf.WriteString("jalon ")
 		if !cfg.Context.Enabled {
-			fmt.Fprintf(&buf, "%s\n", thousandsK(size))
+			fmt.Fprintf(&buf, "%s\n", cli.TokensK(float64(size)))
 			return buf.Bytes()
 		}
 		filled := poleBands(size-sessionFloor(session), cfg.Context.AdviseTokens)
-		fmt.Fprintf(&buf, "%s %s", pole(filled, os.Getenv("NO_COLOR") == ""), thousandsK(size))
+		fmt.Fprintf(&buf, "%s %s", pole(filled, os.Getenv("NO_COLOR") == ""), cli.TokensK(float64(size)))
 		if filled == poleLength {
 			buf.WriteString(" · reset advised")
 		}
@@ -108,9 +108,4 @@ func pole(filled int, color bool) string {
 		bands = poleRed + bands + "\x1b[0m"
 	}
 	return bands + strings.Repeat("▱", poleLength-filled)
-}
-
-// thousandsK formats a token count in thousands, as 230K.
-func thousandsK(tokens int) string {
-	return fmt.Sprintf("%dK", (tokens+500)/1000)
 }

@@ -24,6 +24,14 @@ func TestThousands(t *testing.T) {
 	}
 }
 
+func TestTokensK(t *testing.T) {
+	for in, want := range map[float64]string{0: "0K", 499: "0K", 500: "1K", 229_499: "229K", 229_500: "230K", 230_500: "231K", 230_499.5: "230K"} {
+		if got := TokensK(in); got != want {
+			t.Errorf("TokensK(%v) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestFormatWindow(t *testing.T) {
 	tests := map[time.Duration]string{
 		45 * time.Minute: "45m", 24 * time.Hour: "24h", 90 * time.Minute: "1h30m",
