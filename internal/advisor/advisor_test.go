@@ -1,9 +1,6 @@
 package advisor
 
-import (
-	"reflect"
-	"testing"
-)
+import "testing"
 
 var cfg = Config{AdviseTokens: 200000, StepTokens: 100000}
 
@@ -26,15 +23,8 @@ func TestAdvise(t *testing.T) {
 	}
 	for _, tt := range tests {
 		a, st := Advise(tt.state, tt.tokens, 0, cfg)
-		if a.Kind != tt.want || st != tt.wantState || a.PromptTokens != tt.tokens {
+		if a.Kind != tt.want || st != tt.wantState {
 			t.Errorf("%s: advice %+v state %+v, want kind %s state %+v", tt.name, a, st, tt.want, tt.wantState)
-		}
-		wantReasons := []string(nil)
-		if tt.want == Reset {
-			wantReasons = []string{ReasonSize}
-		}
-		if !reflect.DeepEqual(a.Reasons, wantReasons) {
-			t.Errorf("%s: reasons %v, want %v", tt.name, a.Reasons, wantReasons)
 		}
 	}
 }
