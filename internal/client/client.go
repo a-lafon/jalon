@@ -9,6 +9,9 @@ package client
 type Prompt struct {
 	// Session is the client's session ID, used as the state file name.
 	Session string
+	// ID is the prompt's ID, "" when the client gives none. The stop event of
+	// the turn the prompt starts carries the same ID.
+	ID string
 	// Dir is the project directory, where the handoff folder is found. It is the
 	// directory the session started in when the client says so, else its
 	// working directory.
@@ -22,6 +25,29 @@ type Prompt struct {
 	// Ref is a client-specific handle to find the context size. Claude Code: the
 	// transcript path.
 	Ref string
+}
+
+// Stop is a stop event: the model ended its turn.
+type Stop struct {
+	// Prompt holds the session, the ID of the prompt that started the turn, the
+	// project directory and the handle to find the context size; its Human and
+	// Text are not set.
+	Prompt
+	// Blocked is true when the stop hook already blocked the end of this turn.
+	Blocked bool
+	// LastMessage is the text of the turn's last assistant message.
+	LastMessage string
+}
+
+// Stopper is implemented by adapters whose client has a stop hook, run when the
+// model ends its turn.
+type Stopper interface {
+	// ReadStop parses the client's stop hook input.
+	ReadStop(stdin []byte) (Stop, error)
+	// StopReply formats a stop hook output that blocks the end of the turn once:
+	// reason goes to the model, which goes on, and userMessage, when not "", to
+	// the user.
+	StopReply(reason, userMessage string) ([]byte, error)
 }
 
 // Commands are what the user types to reset a context in this client.
@@ -61,7 +87,7 @@ type Adapter interface {
 type Installer interface {
 	// SettingsPath is the client's default settings file.
 	SettingsPath() (string, error)
-	// Install returns the settings with the prompt hook running exe, and what
+	// Install returns the settings with the hooks running exe, and what
 	// display asks of the status line, plus what it did and why.
 	Install(settings []byte, exe string, display Display) ([]byte, []string, error)
 	// Uninstall returns the settings without the commands Jalon installed.

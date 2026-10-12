@@ -8,12 +8,13 @@ import (
 )
 
 func TestReadPrompt(t *testing.T) {
-	in := `{"session_id":"abc-1","cwd":"/work/app","transcript_path":"/t/abc-1.jsonl","hook_event_name":"UserPromptSubmit","prompt":"ok où en est-on ?"}`
+	t.Setenv("CLAUDE_PROJECT_DIR", "")
+	in := `{"session_id":"abc-1","prompt_id":"p1","cwd":"/work/app","transcript_path":"/t/abc-1.jsonl","hook_event_name":"UserPromptSubmit","prompt":"ok où en est-on ?"}`
 	got, err := Adapter{}.ReadPrompt([]byte(in))
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := client.Prompt{Session: "abc-1", Dir: "/work/app", Human: true, Text: "ok où en est-on ?", Ref: "/t/abc-1.jsonl"}
+	want := client.Prompt{Session: "abc-1", ID: "p1", Dir: "/work/app", Human: true, Text: "ok où en est-on ?", Ref: "/t/abc-1.jsonl"}
 	if got != want {
 		t.Errorf("prompt = %+v, want %+v", got, want)
 	}
@@ -69,6 +70,62 @@ func TestReply(t *testing.T) {
 	want := `{"hookSpecificOutput":{"additionalContext":"to the <model> & more","hookEventName":"UserPromptSubmit"},"systemMessage":"to the user"}` + "\n"
 	if string(b) != want {
 		t.Errorf("reply = %q, want %q", b, want)
+	}
+}
+
+func TestReadStop(t *testing.T) {
+	t.Setenv("CLAUDE_PROJECT_DIR", "")
+	tests := map[string]struct {
+		in   string
+		want client.Stop
+	}{
+		// The input read from Claude Code on 2026-10-12, its unused fields included.
+		"stop event": {
+			`{"session_id":"s1","prompt_id":"p1","transcript_path":"/t.jsonl","cwd":"/work/app","hook_event_name":"Stop","stop_hook_active":false,"last_assistant_message":"Bonjour !","permission_mode":"default","effort":"high","background_tasks":[],"session_crons":[]}`,
+			client.Stop{Prompt: client.Prompt{Session: "s1", ID: "p1", Dir: "/work/app", Ref: "/t.jsonl"}, LastMessage: "Bonjour !"},
+		},
+		"already blocked": {
+			`{"session_id":"s1","prompt_id":"p1","stop_hook_active":true,"last_assistant_message":"> **Jalon** — Compact"}`,
+			client.Stop{Prompt: client.Prompt{Session: "s1", ID: "p1"}, Blocked: true, LastMessage: "> **Jalon** — Compact"},
+		},
+		"no stop_hook_active nor prompt_id": {
+			`{"session_id":"s1","cwd":"/work/app"}`,
+			client.Stop{Prompt: client.Prompt{Session: "s1", Dir: "/work/app"}},
+		},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			got, err := Adapter{}.ReadStop([]byte(tt.in))
+			if err != nil || got != tt.want {
+				t.Errorf("stop = %+v (%v), want %+v", got, err, tt.want)
+			}
+		})
+	}
+	t.Run("project directory", func(t *testing.T) {
+		t.Setenv("CLAUDE_PROJECT_DIR", "/work/app")
+		if got, _ := (Adapter{}).ReadStop([]byte(`{"cwd":"/tmp/other"}`)); got.Dir != "/work/app" {
+			t.Errorf("Dir = %q, want /work/app", got.Dir)
+		}
+	})
+	if _, err := (Adapter{}).ReadStop([]byte("not json")); err == nil {
+		t.Error("bad input gave no error")
+	}
+}
+
+func TestStopReply(t *testing.T) {
+	tests := map[string]struct{ reason, message, want string }{
+		"without a message": {"Jalon: reminder …", "", `{"decision":"block","reason":"Jalon: reminder …"}` + "\n"},
+		"with a message": {"Jalon: context at 296K tokens. <dir> & more", "Jalon: context at 296K tokens, a reset proposal follows.",
+			`{"decision":"block","reason":"Jalon: context at 296K tokens. <dir> & more","systemMessage":"Jalon: context at 296K tokens, a reset proposal follows."}` + "\n"},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			b, err := Adapter{}.StopReply(tt.reason, tt.message)
+			// Compared as bytes: this is the format Claude Code reads.
+			if err != nil || string(b) != tt.want {
+				t.Errorf("reply = %q (%v), want %q", b, err, tt.want)
+			}
+		})
 	}
 }
 

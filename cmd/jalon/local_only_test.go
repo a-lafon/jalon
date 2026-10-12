@@ -143,3 +143,19 @@ func TestInitOverExistingFilesAddsOnlyTheirBackups(t *testing.T) {
 	runInitOK(t, "-statusline", "-advise-tokens", "200000")
 	expectFiles(t, "init", created(t, home, before), ".claude/settings.json.jalon.bak", ".jalon/config.yaml.jalon.bak")
 }
+
+func TestStopHookAdvisingWritesTheStateAndTheHandoffFolder(t *testing.T) {
+	_, cfg := hookState(t, "s1", 100_000)
+	repo := gitRepo(t)
+	runPrompt(t, cfg, promptInput("s1", "p1", repo))
+	appendTranscript(t, "s1", assistantLine(212_000))
+	home := os.Getenv("HOME")
+	homeBefore, repoBefore := tree(t, home), tree(t, repo)
+	if got := runStop(t, cfg, stopInput("s1", "p1", repo, "Done.", false)); got == "" {
+		t.Fatal("no advice")
+	}
+	// The state file existed already: the advice changes it and creates nothing else.
+	expectFiles(t, "the stop hook in the home", created(t, home, homeBefore))
+	expectFiles(t, "the stop hook in the project", created(t, repo, repoBefore),
+		".jalon/", ".jalon/.gitignore", ".jalon/handoffs/", ".jalon/handoffs/2026-10-12/")
+}

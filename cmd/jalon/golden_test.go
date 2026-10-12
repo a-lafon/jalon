@@ -118,3 +118,31 @@ func TestGoldenHook(t *testing.T) {
 		})
 	}
 }
+
+func TestGoldenStopHook(t *testing.T) {
+	// The prompt hook sees prompt p1, then the stop hook ends its turn. The
+	// output of the stop hook and the state file after it are compared.
+	tests := map[string]struct {
+		before, after []string // the transcript at the prompt, and what the turn adds
+		last          string   // the turn's last assistant message
+	}{
+		// Advised at the prompt, the reply lacks the section.
+		"reminder": {[]string{assistantLine(startSize), assistantLine(274_000)}, []string{assistantLine(280_000)}, "Le fichier de reprise est écrit."},
+		// Below the threshold at the prompt, past it at the end of the turn.
+		"crossing": {[]string{assistantLine(startSize), assistantLine(150_000)}, []string{assistantLine(296_000)}, "Done."},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			dir := useHome(t)
+			cfg := configWith(t, thresholdsConfig)
+			repo := gitRepo(t)
+			appendTranscript(t, "s1", tt.before...)
+			runPrompt(t, cfg, promptInput("s1", "p1", repo))
+			appendTranscript(t, "s1", tt.after...)
+			out := runStop(t, cfg, stopInput("s1", "p1", repo, tt.last, false))
+			checkGolden(t, "stop-"+name+".golden", strings.ReplaceAll(out, repo, "<repo>"))
+			state, _ := os.ReadFile(filepath.Join(dir, "s1.json"))
+			checkGolden(t, "stop-"+name+".state", string(state))
+		})
+	}
+}

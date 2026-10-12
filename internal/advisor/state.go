@@ -10,7 +10,7 @@ import (
 )
 
 // Session is what is remembered of one client session between the status line
-// and the prompt hook, which are separate short-lived processes.
+// and the hooks, which are separate short-lived processes.
 type Session struct {
 	// Size is the latest context size, in tokens, as measured by the client.
 	Size int `json:"size"`
@@ -29,6 +29,12 @@ type Session struct {
 	// Proposed is the handoff name prefix given at the last advice, with its day
 	// folder, so a handoff written from it becomes the parent of the next one.
 	Proposed string `json:"proposed,omitempty"`
+	// Prompt is the ID of the last prompt written by a person that the prompt
+	// hook saw, and AdvisedPrompt the ID of the prompt the last advice was given
+	// at, "" when the client gives no prompt IDs. The stop hook knows its turn
+	// by them.
+	Prompt        string `json:"prompt,omitempty"`
+	AdvisedPrompt string `json:"advised_prompt,omitempty"`
 }
 
 // SafeSessionID reports whether id can name a state file: letters, digits, "-"
@@ -67,9 +73,10 @@ func Load(dir, id string) (Session, bool) {
 	return s, true
 }
 
-// Record stores the latest size of a session. When the size fell under half of
-// the previous one, as after a compaction, the last advised size is reset.
-func Record(dir, id string, size int, now time.Time) error {
+// Record stores the latest size of a session and the ID of the prompt of its
+// turn. When the size fell under half of the previous one, as after a
+// compaction, the last advised size is reset.
+func Record(dir, id string, size int, now time.Time, prompt string) error {
 	if !SafeSessionID(id) {
 		return errors.New("unsafe session id")
 	}
@@ -77,13 +84,13 @@ func Record(dir, id string, size int, now time.Time) error {
 	if Compacted(s.Size, size) {
 		s.LastAdvised = 0
 	}
-	s.Size, s.Recorded = size, now
+	s.Size, s.Recorded, s.Prompt = size, now, prompt
 	return write(dir, id, s)
 }
 
-// MarkAdvised stores size as the last advised size of a session, keeping the
-// rest of its state.
-func MarkAdvised(dir, id string, size int, now time.Time) error {
+// MarkAdvised stores size as the last advised size of a session, and prompt as
+// the prompt it was advised at, keeping the rest of its state.
+func MarkAdvised(dir, id string, size int, now time.Time, prompt string) error {
 	if !SafeSessionID(id) {
 		return errors.New("unsafe session id")
 	}
@@ -91,7 +98,7 @@ func MarkAdvised(dir, id string, size int, now time.Time) error {
 	if s.Recorded.IsZero() {
 		s.Size, s.Recorded = size, now
 	}
-	s.LastAdvised = size
+	s.LastAdvised, s.AdvisedPrompt = size, prompt
 	return write(dir, id, s)
 }
 
