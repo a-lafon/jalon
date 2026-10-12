@@ -35,7 +35,7 @@ const hookTimeout = 500 * time.Millisecond
 const (
 	promptOpening = `Jalon: this conversation holds about {tokens}K tokens of context. Answer the user's message first.
 Then end your reply with `
-	stopOpening = `Jalon: context at {tokens}K tokens. Your answer to the user is done and shown: do not repeat it.
+	stopOpening = advisor.MessagePrefix + `{tokens}K tokens. Your answer to the user is done and shown: do not repeat it.
 Add, as your last message, `
 	instructionBody = `a short section written as a Markdown blockquote (every line starts with "> "), whose first words are
 **Jalon** —, in the language the user writes in; it recommends ONE option:

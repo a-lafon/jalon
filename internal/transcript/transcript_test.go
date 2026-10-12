@@ -222,6 +222,43 @@ func advice(uuid, ts, content string) string {
 		uuid, ts, content)
 }
 
+// stopBlock is the entry Claude Code records when a Stop hook blocks the end of
+// a turn with reason.
+func stopBlock(uuid, ts, reason string) string {
+	return fmt.Sprintf(`{"type":"attachment","uuid":%q,"timestamp":%q,"sessionId":"s1","attachment":{"type":"hook_blocking_error","hookName":"Stop","hookEvent":"Stop","toolUseID":"t1","blockingError":{"blockingError":%q,"command":"/opt/homebrew/bin/jalon hook stop --client claude-code"}}}`,
+		uuid, ts, reason)
+}
+
+func TestStopHookAdviceCountsAtTheTurnItEnds(t *testing.T) {
+	lines := []string{
+		humanText("2026-10-06T08:00:00Z", "first"),
+		assistant("2026-10-06T08:00:01Z", "m1", 1, 1000, 0, 5),
+		humanText("2026-10-06T08:00:02Z", "second"),
+		assistant("2026-10-06T08:00:03Z", "m2", 1, 2000, 0, 5),
+		assistant("2026-10-06T08:00:04Z", "m3", 1, 296000, 0, 5),
+		stopBlock("stop1", "2026-10-06T08:00:05Z", "Jalon: context at 296K tokens. Your answer to the user is done and shown: do not repeat it."),
+		assistant("2026-10-06T08:00:06Z", "m4", 1, 297000, 0, 5),
+		humanText("2026-10-06T08:00:07Z", "third"),
+		assistant("2026-10-06T08:00:08Z", "m5", 1, 298000, 0, 5),
+		stopBlock("stop2", "2026-10-06T08:00:09Z", "Jalon: reminder, context at 296K tokens: your reply did not end with the section"),
+		stopBlock("stop3", "2026-10-06T08:00:09Z", "Another stop hook: tests failed."),
+		`{"type":"attachment","uuid":"stop4","timestamp":"2026-10-06T08:00:09Z","attachment":{"type":"hook_blocking_error","hookEvent":"Stop"}}`,
+	}
+	r := NewReader()
+	c, err := r.Read("/p/s1.jsonl", strings.NewReader(strings.Join(lines, "\n")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Given at the end of the second turn (index 1), after its three requests.
+	if len(c.Advices) != 1 || c.Advices[0].UUID != "stop1" || c.Advices[0].Turn != 1 || c.Advices[0].Request != 3 {
+		t.Fatalf("advices = %+v, want stop1 at turn 1 after 3 requests", c.Advices)
+	}
+	// The reminder, another hook's block and an entry without a reason are known and unused.
+	if r.Coverage.Interpreted != 9 || r.Coverage.Ignored != 3 || r.Coverage.Skipped != 0 {
+		t.Errorf("coverage = %+v", r.Coverage)
+	}
+}
+
 func humanText(ts, text string) string {
 	return strings.Replace(userText(ts, text), `{"type"`, `{"origin":{"kind":"human"},"type"`, 1)
 }

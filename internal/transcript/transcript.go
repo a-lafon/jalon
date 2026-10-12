@@ -44,7 +44,7 @@ type Conversation struct {
 	// the distinct session IDs its entries carry, in order.
 	SessionID string
 	Sessions  []string
-	// Advices are the advice the prompt hook gave, in order.
+	// Advices are the advice the hooks gave, in order.
 	Advices []Advice
 	// Resume is set when the first prompt a person typed names a handoff file.
 	Resume *Resume
@@ -52,12 +52,14 @@ type Conversation struct {
 	Writes []Write
 }
 
-// Advice is an advice the prompt hook gave, recorded as its system message.
+// Advice is an advice a hook gave: the prompt hook's system message, or the
+// reason the stop hook blocked the end of a turn with.
 type Advice struct {
 	UUID string
 	Time time.Time
-	// Turn is the index in Turns of the prompt it was given at, and Request the
-	// number of requests made before it.
+	// Turn is the index in Turns of the turn whose reply holds it: the prompt it
+	// was given at, or the turn whose end it was given at. Request is the number
+	// of requests made before it.
 	Turn, Request int
 }
 
@@ -139,7 +141,7 @@ func (c Coverage) SkippedShare() float64 {
 
 // ignoredTypes are the entry types seen in transcripts that carry no context
 // size. A type that is neither here nor interpreted is counted as skipped. An
-// attachment is interpreted when it is an advice of the prompt hook.
+// attachment is interpreted when it is an advice of a hook.
 var ignoredTypes = map[string]bool{
 	"attachment": true, "queue-operation": true, "ai-title": true, "last-prompt": true,
 	"file-history-snapshot": true, "file-history-delta": true, "mode": true,
@@ -213,9 +215,12 @@ type entry struct {
 	} `json:"origin"`
 	Message    json.RawMessage `json:"message"`
 	Attachment *struct {
-		Type      string          `json:"type"`
-		HookEvent string          `json:"hookEvent"`
-		Content   json.RawMessage `json:"content"`
+		Type          string          `json:"type"`
+		HookEvent     string          `json:"hookEvent"`
+		Content       json.RawMessage `json:"content"`
+		BlockingError *struct {
+			BlockingError string `json:"blockingError"`
+		} `json:"blockingError"`
 	} `json:"attachment"`
 	CompactMetadata *struct {
 		Trigger   string `json:"trigger"`
@@ -275,7 +280,13 @@ func (r *Reader) add(conv *Conversation, pending **Turn, lastMessageID *string, 
 		}
 		r.seen[e.UUID] = true
 		r.Coverage.Interpreted++
-		conv.Advices = append(conv.Advices, Advice{UUID: e.UUID, Time: ts, Turn: len(conv.Turns), Request: len(conv.Requests)})
+		// The prompt hook's advice comes before the turn's first answer, which
+		// adds the turn; the stop hook's comes after it, at the end of the turn.
+		turn := len(conv.Turns)
+		if e.Attachment.HookEvent == "Stop" && *pending == nil {
+			turn = max(turn-1, 0)
+		}
+		conv.Advices = append(conv.Advices, Advice{UUID: e.UUID, Time: ts, Turn: turn, Request: len(conv.Requests)})
 	case e.Type == "system" && e.Subtype == "compact_boundary":
 		if e.CompactMetadata == nil || e.UUID == "" || tsErr != nil {
 			r.Coverage.Skipped++
@@ -356,15 +367,22 @@ func (r *Reader) add(conv *Conversation, pending **Turn, lastMessageID *string, 
 	}
 }
 
-// isAdvice reports whether an attachment entry is the system message of an
-// advice from the prompt hook.
+// isAdvice reports whether an attachment entry is an advice: the system
+// message of the prompt hook, or the reason the stop hook blocked the end of a
+// turn with. Both start with the advice's prefix; the stop hook's reminder of
+// an advice already given does not, so it does not count twice.
 func isAdvice(e entry) bool {
 	a := e.Attachment
-	if a == nil || a.Type != "hook_system_message" || a.HookEvent != "UserPromptSubmit" {
+	switch {
+	case a == nil:
 		return false
+	case a.Type == "hook_system_message" && a.HookEvent == "UserPromptSubmit":
+		var content string
+		return json.Unmarshal(a.Content, &content) == nil && strings.HasPrefix(content, advisor.MessagePrefix)
+	case a.Type == "hook_blocking_error" && a.HookEvent == "Stop":
+		return a.BlockingError != nil && strings.HasPrefix(a.BlockingError.BlockingError, advisor.MessagePrefix)
 	}
-	var content string
-	return json.Unmarshal(a.Content, &content) == nil && strings.HasPrefix(content, advisor.MessagePrefix)
+	return false
 }
 
 // resumeOf is the resume a prompt holds, nil when it names no handoff file by
