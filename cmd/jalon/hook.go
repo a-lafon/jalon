@@ -51,6 +51,10 @@ Add, as your last message, `
    used once for a side task.
 3. Compact: the same task continues with little state to carry. Give one ready line, in a code block: {compact} <what to keep;
    what to drop>.
+While background work you started (agents, background commands, watches) is still running, do not recommend a new session
+or {clear}: it may stop that work or deliver its result to a conversation that lost why it was started. Recommend a compact
+whose line keeps the running work and what to do with its result, and add one line saying the user can ask for the handoff
+once that work has reported.
 Keep the section under 10 lines, apart from the handoff file. Give it in this reply only: do not repeat it in later replies.`
 )
 

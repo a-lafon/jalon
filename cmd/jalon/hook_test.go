@@ -1342,3 +1342,21 @@ func TestProgramsAreNeverAdvised(t *testing.T) {
 		}
 	})
 }
+
+func TestInstructionHoldsTheBackgroundWorkRule(t *testing.T) {
+	_, cfg := hookState(t, "s1", 212_000)
+	var out hookOutput
+	if err := json.Unmarshal([]byte(runPrompt(t, cfg, hookInput("s1", gitRepo(t)))), &out); err != nil {
+		t.Fatal(err)
+	}
+	ctxt := out.HookSpecificOutput.AdditionalContext
+	for _, want := range []string{
+		"While background work you started (agents, background commands, watches) is still running, do not recommend a new session\nor /clear",
+		"Recommend a compact\nwhose line keeps the running work and what to do with its result",
+		"the user can ask for the handoff\nonce that work has reported",
+	} {
+		if !strings.Contains(ctxt, want) {
+			t.Errorf("the instruction lacks %q:\n%s", want, ctxt)
+		}
+	}
+}

@@ -94,7 +94,7 @@ var (
 // typed prompt are found. sized is true when an entry decided the size, even to
 // say there is none.
 func scanTail(buf []byte, promptID string) (tail client.Tail, sized bool) {
-	for end := len(buf); end > 0 && !(sized && tail.Typed); {
+	for end := len(buf); end > 0 && (!sized || !tail.Typed); {
 		start := bytes.LastIndexByte(buf[:end], '\n') + 1
 		line := buf[start:end]
 		end = start - 1

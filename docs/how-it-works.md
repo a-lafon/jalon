@@ -29,6 +29,8 @@ At the first prompt past the threshold, the terminal shows a one-line notice, `J
 2. a **handoff**: the model writes a file in `.jalon/handoffs/` and gives you the lines to resume from it (see [handoffs](handoffs.md));
 3. a **`/compact` line** naming what to keep and what to drop.
 
+While background work the model started (agents, background commands, watches) is still running, it recommends a `/compact` line that keeps that work, never a new session or `/clear`, and says you can ask for the handoff once the work has reported.
+
 When the threshold is crossed during a turn, the section comes as a message of its own after the reply, and the terminal shows `Jalon: context at 296K tokens, a reset proposal follows.` The terminal also shows what the stop hook asked the model, labelled `Stop hook error`, and `Stop hook error occurred` below the prompt: Claude Code's wording for a hook that makes the model go on, not an error of Jalon.
 
 You run the command; Jalon never does.
