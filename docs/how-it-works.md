@@ -4,7 +4,7 @@ Jalon cannot reset a conversation itself, since editing history would break the 
 
 ## When it advises
 
-The prompt hook reads the context size from the conversation's transcript, and the **starting size** (the floor) from the conversation's first request, once. The floor is what a reset cannot remove: the system prompt, the tool definitions (MCP included), the agent and skill listings. A conversation that starts at 220K is not advised at its first prompt.
+The hooks read the context size from the conversation's transcript, and the **starting size** (the floor) from the conversation's first request, once. The floor is what a reset cannot remove: the system prompt, the tool definitions (MCP included), the agent and skill listings. A conversation that starts at 220K is not advised at its first prompt.
 
 - `advise_tokens` is the growth above the floor at which the first advice comes (200K by default).
 - `advise_step_tokens` is how much the context must grow after an advice before the next one (150K by default). It counts from the size at the last advice.
@@ -12,7 +12,14 @@ The prompt hook reads the context size from the conversation's transcript, and t
 
 The defaults are a judgment, not a measurement: the [replay test](cost-and-quality.md) backs resetting a large context, not these exact values. Check them against your own history with the [impact report](impact-report.md), and change them with `jalon init --advise-tokens` (see [configuration](configuration.md)).
 
-The advice comes only on prompts you type, not on messages from other sessions or background tasks. The hook works in the terminal and in the VS Code extension, needs no other process, never blocks your prompt, and gives up after 500 ms.
+The advice comes only on prompts you type, not on messages from other sessions or background tasks, and never in a session a program drives: a script or an agent that runs `claude -p`, even with `--resume`, reads the model's last message as its output, so Jalon leaves it alone. It tells them apart from the transcript, where Claude Code marks a typed prompt; a session counts as typed in from the prompt after the first one you type. The hooks work in the terminal and in the VS Code extension, need no other process, never block your prompt, and give up after 500 ms.
+
+Two hooks give the advice. The **prompt hook** runs before each prompt you type is sent, and adds the advice to the model's context. The **stop hook** runs when the model ends a turn you started, and acts in two cases:
+
+- the context crossed the threshold during the turn: it gives the advice then, instead of at your next prompt, which can come many requests later;
+- the prompt hook advised at the start of the turn, and the reply does not end with the Jalon section: it reminds the model once, so the advice shows even where the client shows no notice, as in the VS Code extension.
+
+In both cases it blocks the end of the turn once: the model goes on in the same turn, with one more request, and adds the section after the reply you already see; it is never asked to repeat its answer. The stop hook reads the size from the transcript, where Claude Code has not yet written the turn's last request when the hook runs: a crossing that only the last request shows is advised at your next prompt instead.
 
 ## What you see
 
@@ -21,6 +28,8 @@ At the first prompt past the threshold, the terminal shows a one-line notice, `J
 1. a **new session**, when the task has changed;
 2. a **handoff**: the model writes a file in `.jalon/handoffs/` and gives you the lines to resume from it (see [handoffs](handoffs.md));
 3. a **`/compact` line** naming what to keep and what to drop.
+
+When the threshold is crossed during a turn, the section comes as a message of its own after the reply, and the terminal shows `Jalon: context at 296K tokens, a reset proposal follows.` The terminal also shows what the stop hook asked the model, labelled `Stop hook error`, and `Stop hook error occurred` below the prompt: Claude Code's wording for a hook that makes the model go on, not an error of Jalon.
 
 You run the command; Jalon never does.
 
@@ -69,4 +78,4 @@ Prefer the status line unless you want the pole in Claude Desktop or on a row of
 
 ## Other clients
 
-Everything specific to Claude Code sits in `internal/client/claudecode`, behind the `client.Adapter` interface in `internal/client/client.go`: how to read the hook input, find the context size, write the hook output, the reset commands, and, through the optional `client.Installer`, how to install the hook. To add a client, implement that interface in `internal/client/<name>/`, register it in `cmd/jalon/clients.go`, and install `jalon hook prompt --client <name>` as that client's prompt hook.
+Everything specific to Claude Code sits in `internal/client/claudecode`, behind the `client.Adapter` interface in `internal/client/client.go`: how to read the hook input, find the context size and the typed prompts, write the hook output, the reset commands, through the optional `client.Stopper` how to read a stop event and block the end of a turn, and through the optional `client.Installer` how to install the hooks. To add a client, implement that interface in `internal/client/<name>/`, register it in `cmd/jalon/clients.go`, and install `jalon hook prompt --client <name>` as that client's prompt hook, and `jalon hook stop --client <name>` as its stop hook when it has one.

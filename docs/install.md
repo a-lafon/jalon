@@ -1,6 +1,6 @@
 # Installing Jalon
 
-Every way ends with `jalon init`, which adds the prompt hook and the status line to `~/.claude/settings.json`; `jalon init --dry-run` shows what it would change first.
+Every way ends with `jalon init`, which adds the hooks and the status line to `~/.claude/settings.json`; `jalon init --dry-run` shows what it would change first.
 
 ## Homebrew
 
@@ -23,7 +23,7 @@ Each [release](https://github.com/a-lafon/jalon/releases) has one archive per pl
 tar xzf jalon_0.1.0_linux_amd64.tar.gz jalon   # the archive you downloaded
 mv jalon ~/.local/bin/                         # or /usr/local/bin, any directory on your PATH
 jalon version                                  # jalon 0.1.0 (<commit>, <build date>)
-jalon init                                     # adds the prompt hook and the status line to ~/.claude/settings.json
+jalon init                                     # adds the hooks and the status line to ~/.claude/settings.json
 ```
 
 ## Check the checksum
@@ -62,4 +62,4 @@ A file fetched with `curl` or `gh release download` is not marked.
 - Go: run the `go install` line again.
 - An archive: download the new one and replace `jalon` at the same path.
 
-`jalon init` recorded that path, so the hook keeps working without a new `jalon init`; `jalon version` shows the version you now run. To remove Jalon, run `jalon init --uninstall` before `brew uninstall jalon` or deleting the binary.
+`jalon init` recorded that path, so the hooks keep working without a new `jalon init`, except after an upgrade from a version without the stop hook (0.1.0): run `jalon init` once more to add it, with `--mod` when you use the mod, since plain `jalon init` adds the status line; `jalon version` shows the version you now run. To remove Jalon, run `jalon init --uninstall` before `brew uninstall jalon` or deleting the binary.
