@@ -11,9 +11,6 @@ const (
 	Reset Kind = "reset"
 )
 
-// ReasonSize is the reason of an advice given because the prompt is large.
-const ReasonSize = "size"
-
 // MessagePrefix starts the message the prompt hook shows, and the reason the
 // stop hook blocks with, when they advise a reset. The context report finds the
 // advice given in the transcripts by it.
@@ -37,10 +34,7 @@ type State struct {
 
 // Advice is the outcome at one user turn.
 type Advice struct {
-	Kind    Kind
-	Reasons []string
-	// PromptTokens is the size the advice is based on.
-	PromptTokens int
+	Kind Kind
 }
 
 // Advise computes the advice for a user turn that starts at promptTokens, and
@@ -50,12 +44,12 @@ type Advice struct {
 // absolute size. It must be called on user turns only: inside a tool loop the
 // advice stays what it was.
 func Advise(st State, promptTokens, floor int, cfg Config) (Advice, State) {
-	a := Advice{Kind: None, PromptTokens: promptTokens}
+	a := Advice{Kind: None}
 	if promptTokens-floor < cfg.AdviseTokens {
 		return a, st
 	}
 	if st.LastAdvised == 0 || promptTokens-st.LastAdvised >= cfg.StepTokens {
-		a.Kind, a.Reasons = Reset, []string{ReasonSize}
+		a.Kind = Reset
 		return a, State{LastAdvised: promptTokens}
 	}
 	return a, st
