@@ -1317,14 +1317,10 @@ func TestProgramsAreNeverAdvised(t *testing.T) {
 		repo := gitRepo(t)
 		runPrompt(t, cfg, promptInput("s1", "p6", repo))
 		appendTranscript(t, "s1", programPrompt("p6"), assistantLine(400_000))
-		home := os.Getenv("HOME")
-		before := snapshot(t, home)
 		if got := runStop(t, cfg, stopInput("s1", "p6", repo, "The task's output.", false)); got != "" {
 			t.Errorf("output = %q, want nothing: the program's output is the last message", got)
 		}
-		if after := snapshot(t, home); after != before {
-			t.Errorf("the stop hook wrote:\nbefore %s\nafter  %s", before, after)
-		}
+		assertNoAdvice(t, repo, "p6")
 	})
 
 	t.Run("prompt entry out of reach", func(t *testing.T) {
@@ -1333,15 +1329,25 @@ func TestProgramsAreNeverAdvised(t *testing.T) {
 		runPrompt(t, cfg, promptInput("s1", "p1", repo))
 		// The transcript holds no entry for p1, only the earlier typed p0.
 		appendTranscript(t, "s1", assistantLine(400_000))
-		home := os.Getenv("HOME")
-		before := snapshot(t, home)
 		if got := runStop(t, cfg, stopInput("s1", "p1", repo, "Done.", false)); got != "" {
 			t.Errorf("output = %q, want nothing", got)
 		}
-		if after := snapshot(t, home); after != before {
-			t.Errorf("the stop hook wrote:\nbefore %s\nafter  %s", before, after)
-		}
+		assertNoAdvice(t, repo, "p1")
 	})
+}
+
+// assertNoAdvice fails when session s1's state records an advice, or when the
+// handoff folder was created in repo. The stop hook may record the size: it
+// looks for the typed prompt only once a reset is due.
+func assertNoAdvice(t *testing.T, repo, prompt string) {
+	t.Helper()
+	st, _ := advisor.Load(filepath.Join(os.Getenv("HOME"), ".jalon", "sessions"), "s1")
+	if st.LastAdvised != 0 || st.AdvisedPrompt == prompt || st.Proposed != "" {
+		t.Errorf("state = %+v, want no advice", st)
+	}
+	if _, err := os.Stat(filepath.Join(repo, ".jalon")); err == nil {
+		t.Error("the handoff folder was created")
+	}
 }
 
 func TestInstructionHoldsTheBackgroundWorkRule(t *testing.T) {

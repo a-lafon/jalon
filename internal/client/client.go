@@ -32,8 +32,9 @@ type Tail struct {
 	// Size is the size in tokens of the main conversation's context, 0 when it
 	// cannot be told.
 	Size int
-	// Typed is true when it shows a prompt typed by a person, not sent by a
-	// program; when a prompt ID was asked for, only that prompt counts.
+	// Typed is true when it was looked for and shows a prompt typed by a
+	// person, not sent by a program; when a prompt ID was asked for, only that
+	// prompt counts.
 	Typed bool
 }
 
@@ -76,9 +77,10 @@ type Adapter interface {
 	// ReadPrompt parses the client's prompt hook input.
 	ReadPrompt(stdin []byte) (Prompt, error)
 	// ReadTail reads the end of the conversation of p once: the context size,
-	// and whether a prompt typed by a person shows, the one with ID promptID
-	// when it is not "".
-	ReadTail(p Prompt, promptID string) Tail
+	// and with typed, whether a prompt typed by a person shows, the one with ID
+	// promptID when it is not "". Looking for a typed prompt can read much
+	// further back, so it is asked for only before advice.
+	ReadTail(p Prompt, promptID string, typed bool) Tail
 	// ContextFloor is the size in tokens of the conversation's first request,
 	// which a reset cannot remove, and false when it cannot be told yet.
 	ContextFloor(Prompt) (int, bool)

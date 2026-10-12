@@ -129,11 +129,19 @@ func runPromptHook(ctx context.Context, args []string, stdin io.Reader, out io.W
 				_ = advisor.SetHandoff(dir, prompt.Session, name, threadOf(name), "")
 			}
 		}
-		// The prompt is not in the transcript yet: any typed prompt before it
-		// shows the session is typed in.
-		st, ok := measure(dir, adapter, prompt, adapter.ReadTail(prompt, ""), cfg, now)
+		st, ok := measure(dir, adapter, prompt, adapter.ReadTail(prompt, "", false), cfg, now)
 		if !ok {
 			return nil
+		}
+		// A session a program drives, even resumed, is never advised: the reply is
+		// the program's output. The prompt is not in the transcript yet, so any
+		// typed prompt before it shows the session is typed in; it is looked for
+		// only now, since in a program's session the search reads 8 MB.
+		if !st.Typed {
+			if !adapter.ReadTail(prompt, "", true).Typed ||
+				advisor.Record(dir, prompt.Session, st.Size, now, prompt.ID, true) != nil {
+				return nil
+			}
 		}
 		body, ok := recordAdvice(dir, adapter, prompt, st, now)
 		if !ok {
@@ -198,11 +206,9 @@ func runStopHook(ctx context.Context, args []string, stdin io.Reader, out io.Wri
 		}
 		// A program that runs claude -p reads the last message as its output: a
 		// block would replace it. Only a turn whose prompt a person typed is
-		// blocked.
-		tail := adapter.ReadTail(ev.Prompt, ev.ID)
-		if !tail.Typed {
-			return nil
-		}
+		// blocked; that is looked for only before blocking, since in a program's
+		// session the search reads 8 MB.
+		typed := func() bool { return adapter.ReadTail(ev.Prompt, ev.ID, true).Typed }
 		cfg, err := cli.LoadConfig(flags, *configPath)
 		if err != nil || !cfg.Context.Enabled {
 			return nil
@@ -211,7 +217,7 @@ func runStopHook(ctx context.Context, args []string, stdin io.Reader, out io.Wri
 		if st.AdvisedPrompt == ev.ID {
 			// The instruction asks to end the reply with the section, so only the
 			// last message counts.
-			if strings.Contains(ev.LastMessage, "**Jalon**") {
+			if strings.Contains(ev.LastMessage, "**Jalon**") || !typed() {
 				return nil
 			}
 			handoffDir := handoffFolder(ev.Dir)
@@ -231,8 +237,8 @@ func runStopHook(ctx context.Context, args []string, stdin io.Reader, out io.Wri
 			return reply
 		}
 
-		st, ok = measure(dir, adapter, ev.Prompt, tail, cfg, now)
-		if !ok {
+		st, ok = measure(dir, adapter, ev.Prompt, adapter.ReadTail(ev.Prompt, "", false), cfg, now)
+		if !ok || !typed() {
 			return nil
 		}
 		body, ok := recordAdvice(dir, adapter, ev.Prompt, st, now)
@@ -254,9 +260,7 @@ func runStopHook(ctx context.Context, args []string, stdin io.Reader, out io.Wri
 
 // measure records the context size of the turn of p in the session's state,
 // read from the transcript's tail, with the floor when the state holds none,
-// and runs the advisor. It returns the state, and true when a reset is advised
-// in a session typed in by a person: a session a program drives, even resumed,
-// is never advised, since the reply is the program's output.
+// and runs the advisor. It returns the state, and true when a reset is advised.
 func measure(dir string, adapter client.Adapter, p client.Prompt, tail client.Tail, cfg config.Config, now time.Time) (advisor.Session, bool) {
 	// The size is read from the client's own record of the conversation, so
 	// the hook needs no status line.
@@ -276,7 +280,7 @@ func measure(dir string, adapter client.Adapter, p client.Prompt, tail client.Ta
 	}
 	advice, _ := advisor.Advise(advisor.State{LastAdvised: st.LastAdvised}, st.Size, st.Floor,
 		advisor.Config{AdviseTokens: cfg.Context.AdviseTokens, StepTokens: cfg.Context.AdviseStepTokens})
-	return st, advice.Kind == advisor.Reset && st.Typed
+	return st, advice.Kind == advisor.Reset
 }
 
 // recordAdvice does what an advice at the state's size needs before it is
