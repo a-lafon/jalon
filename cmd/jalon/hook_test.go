@@ -1117,9 +1117,10 @@ func TestStopHookSectionMissing(t *testing.T) {
 	proposed := filepath.Join(repo, ".jalon", "handoffs", prefix) + "-<short-slug>.md"
 	if !strings.HasPrefix(out.Reason, "Jalon: reminder, context at 274K tokens: ") ||
 		!strings.Contains(out.Reason, "Do not repeat your answer") ||
-		!strings.Contains(out.Reason, "Write "+proposed) ||
-		!strings.Contains(out.Reason, `Its first line is "Session: s1".`) ||
-		!strings.Contains(out.Reason, "first words are\n**Jalon** —") ||
+		!strings.Contains(out.Reason, "a handoff written to "+proposed) ||
+		!strings.Contains(out.Reason, "starting with **Jalon** —") ||
+		// Short: the terminal prints it, and the body was given at the start of the turn.
+		strings.Count(out.Reason, "\n") > 2 || strings.Contains(out.Reason, "first words are") ||
 		strings.Contains(out.Reason, "already written") || strings.Contains(out.Reason, "{") {
 		t.Errorf("reason = %q", out.Reason)
 	}

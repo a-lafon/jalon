@@ -220,8 +220,10 @@ func runStopHook(ctx context.Context, args []string, stdin io.Reader, out io.Wri
 			if written := lastHandoff(handoffDir, st.Proposed+"-"); st.Proposed != "" && written != "" {
 				reason += "The handoff " + filepath.Join(handoffDir, written) + " is already written: do not write another file, give the section with its lines to copy for it.\n"
 			}
-			reason += "Add now, as your last message, " +
-				fillBody(adapter, handoffDir, st.Proposed, handoffHeader(st.Parent, ev.Session))
+			// One sentence, not the body: the model got the body at the start of the
+			// turn, and Claude Code's terminal prints the whole reason as an error.
+			reason += "Add now, as your last message, that section: a Markdown blockquote starting with **Jalon** — that recommends ONE option, a new session, a handoff written to " +
+				filepath.Join(handoffDir, st.Proposed) + "-<short-slug>.md with the lines to copy, or a " + adapter.Commands().Compact + " line."
 			reply, err := stopper.StopReply(reason, "")
 			if err != nil {
 				return nil
