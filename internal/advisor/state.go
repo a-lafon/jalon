@@ -168,7 +168,9 @@ func write(dir, id string, s Session) error {
 }
 
 // Sweep deletes the state files recorded more than maxAge ago. A file that
-// cannot be parsed counts as recorded at its modification time.
+// cannot be parsed counts as recorded at its modification time. It also deletes
+// the temporary files modified more than maxAge ago, left by a write that did
+// not finish; a fresh one may be a write in progress.
 func Sweep(dir string, now time.Time, maxAge time.Duration) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -176,10 +178,19 @@ func Sweep(dir string, now time.Time, maxAge time.Duration) {
 	}
 	for _, e := range entries {
 		name := e.Name()
-		if e.IsDir() || !strings.HasSuffix(name, ".json") {
+		if e.IsDir() {
 			continue
 		}
 		path := filepath.Join(dir, name)
+		if strings.HasPrefix(name, ".tmp-") {
+			if fi, err := e.Info(); err == nil && now.Sub(fi.ModTime()) > maxAge {
+				os.Remove(path)
+			}
+			continue
+		}
+		if !strings.HasSuffix(name, ".json") {
+			continue
+		}
 		recorded := time.Time{}
 		if b, err := os.ReadFile(path); err == nil {
 			var s Session
