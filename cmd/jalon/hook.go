@@ -44,6 +44,10 @@ Then end your reply with a short section written as a Markdown blockquote (every
    used once for a side task.
 3. Compact: the same task continues with little state to carry. Give one ready line, in a code block: {compact} <what to keep;
    what to drop>.
+While background work you started that will report back (agents, background commands) is still running, do not recommend
+a new session or {clear}: its result would reach a conversation that lost why it was started, or end with this session.
+Recommend a compact whose line keeps the running work, what to do with its result, and the handoff path and first lines
+of option 2; add one line saying the user can ask for that handoff once the work has reported.
 Keep the section under 10 lines, apart from the handoff file. Give it in this reply only: do not repeat it in later replies.`
 
 // runHook runs "jalon hook <name>". Only the prompt hook exists.
