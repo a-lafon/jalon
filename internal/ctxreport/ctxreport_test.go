@@ -103,6 +103,22 @@ func TestFloorsAreTheFirstRequestOfEachConversation(t *testing.T) {
 	}
 }
 
+func TestFloorShareCountsTheRequestsOfThePeriod(t *testing.T) {
+	// Starts at 70K; after a compaction a request falls below it, and counts whole.
+	c := conv("a", 100, 70000, 170000, 270000, 40000)
+	c.Project, c.Cwd = "/t/-work-app", "/work/app"
+	res := Simulate([]transcript.Conversation{c}, params)
+	f := res.Floors[0]
+	if f.Project != "/t/-work-app" || f.Cwd != "/work/app" || f.PromptRead != 550000 || f.FloorRead != 250000 {
+		t.Errorf("floor = %+v, want 250K of 550K", f)
+	}
+	// A period that cuts the conversation counts only its own requests.
+	f = res.Between(t0, t0.Add(150*time.Minute)).Floors[0]
+	if f.PromptRead != 510000 || f.FloorRead != 210000 {
+		t.Errorf("floor in the period = %+v, want 210K of 510K", f)
+	}
+}
+
 func TestCompactionWithoutAdvice(t *testing.T) {
 	c := conv("a", 100, 50000, 120000, 150000)
 	compactAfter(&c, 3, "manual", 150000)
