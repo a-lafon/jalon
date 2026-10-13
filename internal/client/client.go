@@ -111,7 +111,8 @@ type Installer interface {
 type Display int
 
 const (
-	// NoDisplay leaves the status line as it is.
+	// NoDisplay adds and removes no status line; it only updates the path in
+	// Jalon's.
 	NoDisplay Display = iota
 	// StatusLine installs Jalon's status line when there is none.
 	StatusLine
@@ -137,4 +138,16 @@ type ModInstaller interface {
 	// UninstallMod removes the mod, or with dryRun says what it would run. A mod
 	// that is not installed is not an error.
 	UninstallMod(run Runner, dryRun bool) (string, error)
+	// ReadMod tells what the settings record of the mod, without running
+	// anything; settings it cannot read show no mod.
+	ReadMod(settings []byte) ModState
+}
+
+// ModState is the mod as the client's settings record it.
+type ModState struct {
+	// Installed is true when the settings list the mod, enabled or not.
+	Installed bool
+	Enabled   bool
+	// Binary is the jalon the mod runs, a path or a name on the PATH.
+	Binary string
 }

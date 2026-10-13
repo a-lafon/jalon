@@ -62,4 +62,4 @@ A file fetched with `curl` or `gh release download` is not marked.
 - Go: run the `go install` line again.
 - An archive: download the new one and replace `jalon` at the same path.
 
-`jalon init` recorded that path, so the hooks keep working without a new `jalon init`, except after an upgrade from a version without the stop hook (0.1.0): run `jalon init` once more to add it, with `--mod` when you use the mod, since plain `jalon init` adds the status line; `jalon version` shows the version you now run. To remove Jalon, run `jalon init --uninstall` before `brew uninstall jalon` or deleting the binary.
+`jalon init` recorded that path, so the hooks keep working without a new `jalon init`, except after an upgrade from a version without the stop hook (0.1.0): run `jalon init` once more to add it, which keeps the mod if you use it; `jalon version` shows the version you now run. To remove Jalon, run `jalon init --uninstall` before `brew uninstall jalon` or deleting the binary.

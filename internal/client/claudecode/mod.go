@@ -84,6 +84,42 @@ func (Adapter) UninstallMod(run client.Runner, dryRun bool) (string, error) {
 	return "", fmt.Errorf("claude plugin marketplace remove: unexpected output %q", strings.TrimSpace(string(out)))
 }
 
+// ReadMod reads the mod from enabledPlugins and pluginConfigs, where claude
+// plugin install records it under jalon@jalon, whatever its enabled value. A
+// missing or empty binary option is the mod's default, jalon.
+func (Adapter) ReadMod(settings []byte) client.ModState {
+	id := modName + "@" + modName
+	enabled, ok := lookup(settings, "enabledPlugins", id)
+	if !ok {
+		return client.ModState{}
+	}
+	state := client.ModState{Installed: true, Binary: modName}
+	_ = json.Unmarshal(enabled, &state.Enabled)
+	if raw, ok := lookup(settings, "pluginConfigs", id, "options", "binary"); ok {
+		var binary string
+		if json.Unmarshal(raw, &binary) == nil && binary != "" {
+			state.Binary = binary
+		}
+	}
+	return state
+}
+
+// lookup returns the value at keys in nested JSON objects, and false when a key
+// is missing or a value on the way is not an object.
+func lookup(raw []byte, keys ...string) (json.RawMessage, bool) {
+	for _, key := range keys {
+		o, err := parseObject(raw)
+		if err != nil {
+			return nil, false
+		}
+		var ok bool
+		if raw, ok = o.get(key); !ok {
+			return nil, false
+		}
+	}
+	return raw, true
+}
+
 // cliResult is the line a claude plugin command prints with --json.
 type cliResult struct {
 	Outcome     string `json:"outcome"`
