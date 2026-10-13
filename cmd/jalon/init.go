@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/a-lafon/jalon/internal/cli"
@@ -27,7 +28,8 @@ var (
 
 // runInit runs "jalon init": it installs Jalon's hooks and its status line into
 // the client's settings, or with -mod the client's mod in place of the status
-// line, or removes them all with -uninstall. After an install it prints the
+// line, or removes them all with -uninstall. A rerun without -mod or
+// -statusline keeps a mod the settings record. After an install it prints the
 // advisor's thresholds, which -advise-tokens and -advise-step-tokens set in the
 // config file.
 func runInit(args []string, out io.Writer) error {
@@ -101,6 +103,16 @@ func runInit(args []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
+	// A rerun keeps the mod the settings record unless a display is asked for,
+	// runs no claude command for it, and leaves the status line as it is.
+	var modState client.ModState
+	if hasMod && !*uninstall {
+		modState = modInstaller.ReadMod(current)
+	}
+	keepMod := modState.Installed && !*mod && !statusLineSet
+	if keepMod {
+		display = client.NoDisplay
+	}
 	var next []byte
 	var actions []string
 	var exe string
@@ -165,6 +177,27 @@ func runInit(args []string, out io.Writer) error {
 			return fmt.Errorf("%w; the settings are written, run jalon init -mod again", err)
 		}
 		fmt.Fprintln(out, done)
+	}
+	// Install's actions tell whether Jalon's status line is now in the settings.
+	statusLineOn := slices.ContainsFunc(actions, func(a string) bool {
+		return strings.HasPrefix(a, "status line: added") || strings.HasPrefix(a, "status line: updated") ||
+			a == "status line: already installed"
+	})
+	if keepMod {
+		kept := "mod: kept"
+		if !modState.Enabled {
+			kept += " (disabled)"
+		}
+		if !statusLineOn {
+			kept += "; jalon init --statusline draws the pole in the status line instead"
+		}
+		fmt.Fprintln(out, kept)
+		if !runsExe(modState.Binary, exe) {
+			fmt.Fprintf(out, "mod: it runs %s, not %s; jalon init --mod updates it\n", modState.Binary, exe)
+		}
+	}
+	if modState.Installed && statusLineOn {
+		fmt.Fprintln(out, "mod: installed too, the mod and the status line both draw the pole")
 	}
 
 	if setThresholds {
@@ -233,6 +266,23 @@ func installableExecutable() (string, error) {
 		}
 	}
 	return exe, nil
+}
+
+// runsExe tells whether the mod's binary is exe: the same path, or a name the
+// PATH resolves to it.
+func runsExe(binary, exe string) bool {
+	if binary == exe {
+		return true
+	}
+	if filepath.Base(binary) != binary {
+		return false
+	}
+	found, err := lookPath(binary)
+	if err != nil {
+		return false
+	}
+	abs, err := filepath.Abs(found)
+	return err == nil && abs == exe
 }
 
 // runCommand runs a command and returns its standard output; a failure carries

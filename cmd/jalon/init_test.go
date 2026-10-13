@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -526,5 +527,179 @@ func TestInitModRefusalsWriteNothing(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// noClaude fails the test if init runs a claude command.
+func noClaude(t *testing.T) {
+	t.Helper()
+	runClient = func(name string, args ...string) ([]byte, error) {
+		t.Errorf("ran %s %v", name, args)
+		return nil, errors.New("no claude command may run")
+	}
+}
+
+// modSettings writes settings holding Jalon's hooks, the mod as claude plugin
+// install records it, enabled or not, with binary unless it is "", and extra
+// members, and returns their path.
+func modSettings(t *testing.T, enabled bool, binary, extra string) string {
+	t.Helper()
+	configs := ""
+	if binary != "" {
+		configs = `, "pluginConfigs": {"jalon@jalon": {"options": {"binary": "` + binary + `"}}}`
+	}
+	hooks := `"hooks": {` +
+		`"UserPromptSubmit": [{"hooks": [{"type": "command", "command": "` + testExe + ` hook prompt --client claude-code", "timeout": 2}]}], ` +
+		`"Stop": [{"hooks": [{"type": "command", "command": "` + testExe + ` hook stop --client claude-code", "timeout": 2}]}]}`
+	content := fmt.Sprintf(`{%s%s, "enabledPlugins": {"jalon@jalon": %t}%s}`, extra, hooks, enabled, configs)
+	path := filepath.Join(t.TempDir(), "settings.json")
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestInitKeepsTheMod(t *testing.T) {
+	jalonStatusLine := `"statusLine": {"type": "command", "command": "` + testExe + ` statusline --client claude-code"}, `
+	tests := map[string]struct {
+		enabled           bool
+		extra             string
+		want, wantNot     []string
+		statusLineKept    bool // Jalon's status line was in the settings and stays
+		settingsUnchanged bool
+	}{
+		"rerun": {
+			enabled: true, want: []string{"prompt hook: already installed", "stop hook: already installed", "nothing to change",
+				"mod: kept; jalon init --statusline draws the pole in the status line instead"},
+			wantNot: []string{"status line:", "(disabled)", "mod: it runs"}, settingsUnchanged: true,
+		},
+		"status line next to the mod": {
+			enabled: true, extra: jalonStatusLine,
+			want:    []string{"status line: already installed", "mod: kept\n", "both draw the pole"},
+			wantNot: []string{"status line: removed", "mod: it runs"}, statusLineKept: true, settingsUnchanged: true,
+		},
+		"disabled": {
+			want:    []string{"mod: kept (disabled); jalon init --statusline"},
+			wantNot: []string{"status line:"}, settingsUnchanged: true,
+		},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			withExecutable(t, testExe)
+			noClaude(t)
+			path := modSettings(t, tt.enabled, testExe, tt.extra)
+			before, _ := os.ReadFile(path)
+			out := runInitOK(t, "-settings", path)
+			for _, w := range tt.want {
+				if !strings.Contains(out, w) {
+					t.Errorf("output lacks %q:\n%s", w, out)
+				}
+			}
+			for _, w := range tt.wantNot {
+				if strings.Contains(out, w) {
+					t.Errorf("output holds %q:\n%s", w, out)
+				}
+			}
+			after, _ := os.ReadFile(path)
+			if strings.Contains(string(after), "statusLine") != tt.statusLineKept || !strings.Contains(string(after), `"jalon@jalon"`) {
+				t.Errorf("settings = %s", after)
+			}
+			if tt.settingsUnchanged != bytes.Equal(after, before) {
+				t.Errorf("settings changed: %t, want %t", !bytes.Equal(after, before), tt.settingsUnchanged)
+			}
+		})
+	}
+}
+
+func TestInitKeptModRunningAnotherBinary(t *testing.T) {
+	tests := map[string]struct {
+		binary string // "" for no binary option
+		onPath string // what lookPath finds for jalon, "" for nothing
+		stale  bool
+	}{
+		"another path":             {"/usr/local/bin/jalon", testExe, true},
+		"the same path":            {testExe, "", false},
+		"default, on the PATH":     {"", testExe, false},
+		"default, not on the PATH": {"", "", true},
+		"default, another on PATH": {"", "/usr/local/bin/jalon", true},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			withExecutable(t, testExe)
+			noClaude(t)
+			lookPath = func(string) (string, error) {
+				if tt.onPath == "" {
+					return "", exec.ErrNotFound
+				}
+				return tt.onPath, nil
+			}
+			out := runInitOK(t, "-settings", modSettings(t, true, tt.binary, ""))
+			runs := "/usr/local/bin/jalon"
+			if tt.binary == "" {
+				runs = "jalon"
+			}
+			line := "mod: it runs " + runs + ", not " + testExe + "; jalon init --mod updates it"
+			if strings.Contains(out, line) != tt.stale || strings.Contains(out, "mod: it runs") != tt.stale || !strings.Contains(out, "mod: kept") {
+				t.Errorf("stale %t, output:\n%s", tt.stale, out)
+			}
+		})
+	}
+}
+
+func TestInitStatusLineNextToTheMod(t *testing.T) {
+	withExecutable(t, testExe)
+	noClaude(t)
+	path := modSettings(t, true, testExe, "")
+	out := runInitOK(t, "-settings", path, "-statusline")
+	if !strings.Contains(out, "status line: added") || !strings.Contains(out, "mod: installed too, the mod and the status line both draw the pole") ||
+		strings.Contains(out, "mod: kept") {
+		t.Errorf("output = %q", out)
+	}
+	if b, _ := os.ReadFile(path); !strings.Contains(string(b), testExe+" statusline") {
+		t.Errorf("settings = %s", b)
+	}
+	// A plain rerun, as after an upgrade, keeps it.
+	out = runInitOK(t, "-settings", path)
+	if !strings.Contains(out, "status line: already installed") || !strings.Contains(out, "both draw the pole") {
+		t.Errorf("rerun output = %q", out)
+	}
+}
+
+func TestInitStatusLineOfAnotherCommandNextToTheMod(t *testing.T) {
+	withExecutable(t, testExe)
+	noClaude(t)
+	path := modSettings(t, true, testExe, `"statusLine": {"type": "command", "command": "~/bin/my-status.sh"}, `)
+	if out := runInitOK(t, "-settings", path, "-statusline"); !strings.Contains(out, "status line: left unchanged") || strings.Contains(out, "both draw") {
+		t.Errorf("output = %q", out)
+	}
+}
+
+func TestInitWithoutTheModAddsTheStatusLine(t *testing.T) {
+	withExecutable(t, testExe)
+	noClaude(t)
+	path := filepath.Join(t.TempDir(), "settings.json")
+	if err := os.WriteFile(path, []byte(`{"enabledPlugins": {"other@jalon": true}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if out := runInitOK(t, "-settings", path); !strings.Contains(out, "status line: added") || strings.Contains(out, "mod:") {
+		t.Errorf("output = %q", out)
+	}
+}
+
+func TestInitKeptModDryRun(t *testing.T) {
+	withExecutable(t, testExe)
+	noClaude(t)
+	path := modSettings(t, true, testExe, `"statusLine": {"type": "command", "command": "/x/jalon statusline --client claude-code"}, `)
+	before, _ := os.ReadFile(path)
+	out := runInitOK(t, "-settings", path, "-dry-run")
+	preview := out[strings.Index(out, "It would become:"):]
+	if !strings.Contains(out, "mod: kept") || !strings.Contains(preview, testExe+" statusline") {
+		t.Errorf("output = %q", out)
+	}
+	if after, _ := os.ReadFile(path); !bytes.Equal(after, before) {
+		t.Errorf("settings changed: %s", after)
+	}
+	if entries, _ := os.ReadDir(filepath.Dir(path)); len(entries) != 1 {
+		t.Errorf("dry run left files: %v", entries)
 	}
 }

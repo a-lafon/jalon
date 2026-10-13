@@ -40,7 +40,7 @@ Then start a new Claude Code session, in the terminal or in VS Code, and work as
 
 ## Update
 
-Jalon makes no network call, so it does not check for updates: run `brew outdated`, or watch the [releases](https://github.com/a-lafon/jalon/releases). Then `brew upgrade jalon`. The hooks keep working, but an upgrade from 0.1.0 needs `jalon init` once more, to add the stop hook: `jalon init --mod` when you use the mod, since plain `jalon init` adds the status line. Other install methods update as described in [installing Jalon](docs/install.md#update).
+Jalon makes no network call, so it does not check for updates: run `brew outdated`, or watch the [releases](https://github.com/a-lafon/jalon/releases). Then `brew upgrade jalon`. The hooks keep working, but an upgrade from 0.1.0 needs `jalon init` once more, to add the stop hook; it keeps the mod if you use it. Other install methods update as described in [installing Jalon](docs/install.md#update).
 
 ## What Jalon touches
 

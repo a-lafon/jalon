@@ -134,3 +134,39 @@ func TestUninstallMod(t *testing.T) {
 		}
 	})
 }
+
+func TestReadMod(t *testing.T) {
+	// recorded is the shape claude plugin install wrote on 2026-10-12, Claude Code 2.1.296.
+	const recorded = `{
+  "model": "opus",
+  "enabledPlugins": { "jalon@jalon": true },
+  "extraKnownMarketplaces": { "jalon": { "source": { "source": "github", "repo": "a-lafon/jalon" } } },
+  "pluginConfigs": { "jalon@jalon": { "options": { "binary": "/opt/homebrew/bin/jalon" } } }
+}`
+	tests := map[string]struct {
+		settings string
+		want     client.ModState
+	}{
+		"recorded":         {recorded, client.ModState{Installed: true, Enabled: true, Binary: "/opt/homebrew/bin/jalon"}},
+		"disabled":         {`{"enabledPlugins": {"jalon@jalon": false}}`, client.ModState{Installed: true, Binary: "jalon"}},
+		"no binary option": {`{"enabledPlugins": {"jalon@jalon": true}, "pluginConfigs": {"jalon@jalon": {}}}`, client.ModState{Installed: true, Enabled: true, Binary: "jalon"}},
+		"empty binary":     {`{"enabledPlugins": {"jalon@jalon": true}, "pluginConfigs": {"jalon@jalon": {"options": {"binary": ""}}}}`, client.ModState{Installed: true, Enabled: true, Binary: "jalon"}},
+		"binary not a string": {`{"enabledPlugins": {"jalon@jalon": true}, "pluginConfigs": {"jalon@jalon": {"options": {"binary": 1}}}}`,
+			client.ModState{Installed: true, Enabled: true, Binary: "jalon"}},
+		"options not an object": {`{"enabledPlugins": {"jalon@jalon": true}, "pluginConfigs": {"jalon@jalon": {"options": []}}}`,
+			client.ModState{Installed: true, Enabled: true, Binary: "jalon"}},
+		"enabled not a bool":    {`{"enabledPlugins": {"jalon@jalon": "yes"}}`, client.ModState{Installed: true, Binary: "jalon"}},
+		"another plugin":        {`{"enabledPlugins": {"other@jalon": true}, "pluginConfigs": {"jalon@jalon": {"options": {"binary": "/x/jalon"}}}}`, client.ModState{}},
+		"plugins not an object": {`{"enabledPlugins": ["jalon@jalon"]}`, client.ModState{}},
+		"no plugins":            {`{"model": "opus"}`, client.ModState{}},
+		"empty file":            {``, client.ModState{}},
+		"invalid JSON":          {`{"enabledPlugins": {"jalon@jalon": true`, client.ModState{}},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			if got := (Adapter{}).ReadMod([]byte(tt.settings)); got != tt.want {
+				t.Errorf("ReadMod = %+v, want %+v", got, tt.want)
+			}
+		})
+	}
+}
