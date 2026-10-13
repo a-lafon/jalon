@@ -42,6 +42,15 @@ func TestUnknownCommandPrintsTheUsage(t *testing.T) {
 	}
 }
 
+// The usage fits an 80-column terminal, so no line wraps and breaks the layout.
+func TestUsageFitsIn80Columns(t *testing.T) {
+	for _, line := range strings.Split(usage, "\n") {
+		if n := len([]rune(line)); n > 80 {
+			t.Errorf("%d columns: %q", n, line)
+		}
+	}
+}
+
 // tree lists what exists under root, as paths relative to it: directories end
 // with a slash.
 func tree(t *testing.T, root string) []string {
