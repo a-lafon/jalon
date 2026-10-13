@@ -95,6 +95,9 @@ type Turn struct {
 	// takes it for typed, and a person typed a prompt earlier in the
 	// conversation, since the hook runs before its prompt reaches the transcript.
 	Advisable bool
+	// Human is set when a person typed the prompt itself (origin kind "human"),
+	// the turns the stop hook acts on.
+	Human bool
 }
 
 // Request is one assistant API request.
@@ -365,6 +368,7 @@ func (r *Reader) add(conv *Conversation, pending **Turn, lastMessageID *string, 
 				*pending = &Turn{Time: ts, Block: len(conv.Blocks),
 					Advisable: conv.Human > 0 && (r.Typed == nil || r.Typed(promptText(m.Content)))}
 				if e.Origin != nil && e.Origin.Kind == "human" {
+					(*pending).Human = true
 					if conv.Human == 0 {
 						conv.Resume = resumeOf(m.Content, ts, len(conv.Turns), len(conv.Requests))
 					}

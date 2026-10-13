@@ -19,7 +19,7 @@ Usage:
       install the hooks and the status line, or the mod; print or set the
       thresholds
   jalon context-report [-since 7d] [-transcripts dir] [-split t1,t2]
-                       [-config path]
+                       [-stop-hook=false] [-config path]
       compare reset advice with the resets you did
   jalon statusline [-client name] [-config path]
       print the context size for a status line (reads its JSON on stdin)
