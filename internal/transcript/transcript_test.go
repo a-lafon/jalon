@@ -211,9 +211,43 @@ func TestReadDirFiltersByModTimeAndSortsOldestFirst(t *testing.T) {
 	if err != nil || len(convs) != 1 || filepath.Base(convs[0].File) != "new.jsonl" {
 		t.Fatalf("recent = %+v, err %v", convs, err)
 	}
+	if convs[0].Project != filepath.Join(dir, "p1") {
+		t.Errorf("project = %q, want the folder of the file", convs[0].Project)
+	}
 	convs, err = NewReader().ReadDir(dir, time.Time{})
 	if err != nil || len(convs) != 2 || filepath.Base(convs[0].File) != "old.jsonl" {
 		t.Fatalf("all = %+v, err %v", convs, err)
+	}
+
+	// One project's folder holds the session files directly.
+	convs, err = NewReader().ReadDir(filepath.Join(dir, "p1"), time.Time{})
+	if err != nil || len(convs) != 1 || filepath.Base(convs[0].File) != "new.jsonl" || convs[0].Project != filepath.Join(dir, "p1") {
+		t.Fatalf("one project = %+v, err %v", convs, err)
+	}
+}
+
+func TestCwdIsTheFirstOneRecorded(t *testing.T) {
+	withCwd := func(line, cwd string) string {
+		return strings.Replace(line, `{"type"`, fmt.Sprintf(`{"cwd":%q,"type"`, cwd), 1)
+	}
+	for name, tc := range map[string]struct {
+		lines []string
+		want  string
+	}{
+		"first entry with one": {[]string{
+			`{"type":"queue-operation","timestamp":"2026-10-06T07:59:00Z"}`,
+			withCwd(userText("2026-10-06T08:00:00Z", "x"), "/work/app"),
+			withCwd(assistant("2026-10-06T08:00:01Z", "m1", 1, 100, 0, 5), "/work/app/sub"),
+		}, "/work/app"},
+		"none": {[]string{
+			userText("2026-10-06T08:00:00Z", "x"),
+			assistant("2026-10-06T08:00:01Z", "m1", 1, 100, 0, 5),
+		}, ""},
+	} {
+		c, err := NewReader().Read("/p/s1.jsonl", strings.NewReader(strings.Join(tc.lines, "\n")))
+		if err != nil || c.Cwd != tc.want || c.Project != "/p" {
+			t.Errorf("%s: cwd %q, project %q, err %v, want cwd %q in /p", name, c.Cwd, c.Project, err, tc.want)
+		}
 	}
 }
 

@@ -7,7 +7,7 @@ jalon context-report [--since 7d] [--transcripts dir] [--split t1,t2] [--config 
 ```
 
 - `--since` takes a Go duration (`90m`, `24h`) or days (`7d`); the default is 7 days.
-- `--transcripts` is the folder to read, `~/.claude/projects` by default. The command fails, naming it, when it cannot be read.
+- `--transcripts` is the folder to read, `~/.claude/projects` by default. It reads `<folder>/<project>/<session>.jsonl` and `<folder>/<session>.jsonl`, so one project's folder, such as `~/.claude/projects/-Users-me-work-app`, works too. The command fails, naming it, when it cannot be read, names the two layouts when it finds no file, and says so when files exist but none was modified in the window.
 - `--split` takes times (`2026-10-12T09:00` or `2026-10-13`, local time) that cut the window into periods, printed one after the other, so you can compare before and after a change of thresholds.
 
 ## Impact
@@ -23,5 +23,7 @@ A handoff resume is linked to the conversation that wrote the handoff, or else t
 For each conversation, the report replays the advisor with your current thresholds, with each conversation's starting size, and compares its advice with the resets you did: your compactions and your handoffs. For each reset it prints how many turns before it the advice would have come (the lead), or `crossed mid-turn` when the context grew past the threshold inside one turn's tool loop, or `no advice`. It also prints the compactions with their size, the starting sizes, and the share of the context taken by stale tool results at each advised point.
 
 "Extra prompt tokens after the advice" is the sum, over the requests from the first simulated advice to the reset, of the prompt tokens above the size at that advice: roughly what resetting at the advice would have avoided reading.
+
+The starting size of a conversation is the size of its first request: the instructions, memory and tools the client loads, and your first prompt. The report prints its distribution, the share of the prompt tokens read by the conversations that started in the period that was this starting size, which no reset can remove (the Impact section's total also counts the conversations that started earlier), and one line per project: its working directory (or its folder's name), the number of conversations, the p50 and max of their starting size and that share, largest p50 first, at most 10 lines. A project whose starting size stands out is one whose instructions are worth trimming; `--split` shows whether a change lowered it.
 
 Once the hook advises, you reset at the threshold then in force, so those resets cannot judge a higher one; the report marks the resets that followed an advice the hook gave.
