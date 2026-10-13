@@ -9,6 +9,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"text/tabwriter"
 	"time"
 
@@ -103,6 +105,13 @@ func printCoverage(out io.Writer, c transcript.Coverage, dir string) {
 	fmt.Fprintf(out, "  %d files, %s entries read: %s used, %s known and unused, %s skipped (%s); %d distinct compactions\n",
 		c.Files, cli.Thousands(int64(c.Read)), cli.Thousands(int64(c.Interpreted)), cli.Thousands(int64(c.Ignored)),
 		cli.Thousands(int64(c.Skipped)), cli.Percent(c.SkippedShare()), c.Compactions)
+	if c.Found > 0 && c.Files == 0 {
+		fmt.Fprintf(out, "  %s found, none modified in this window\n", cli.Plural(c.Found, "transcript file"))
+	}
+	if c.Found == 0 {
+		fmt.Fprintf(out, "  no transcript file found: the report reads %s and %s\n",
+			filepath.Join(dir, "<project>", "<session>.jsonl"), filepath.Join(dir, "<session>.jsonl"))
+	}
 	if c.Read > 0 && c.SkippedShare() > 0.05 {
 		fmt.Fprintln(out, "  warning: many entries were not understood, the transcript format may have changed; read the transcript sections with care")
 	}
@@ -175,18 +184,7 @@ func printImpact(out io.Writer, im ctxreport.Impact) {
 
 // printTranscriptPeriod prints the sections that come from the transcripts.
 func printTranscriptPeriod(out io.Writer, r ctxreport.Result, p ctxreport.Params) {
-	fmt.Fprintln(out, "\nStarting size of the conversations (first request, transcripts)")
-	if len(r.Floors) == 0 {
-		fmt.Fprintln(out, "  none in this period")
-	} else {
-		var sizes []float64
-		for _, f := range r.Floors {
-			sizes = append(sizes, float64(f.PromptTokens))
-		}
-		d := ctxreport.Distribution(sizes)
-		fmt.Fprintf(out, "  %d conversations: p10 %s  p50 %s  p90 %s  max %s tokens; a reset cannot remove it, the advice counts the growth above it\n",
-			d.N, cli.TokensK(d.P10), cli.TokensK(d.P50), cli.TokensK(d.P90), cli.TokensK(d.Max))
-	}
+	printStartingSize(out, r.Floors)
 	var compactions []ctxreport.SimReset
 	for _, c := range r.Resets {
 		if c.Kind == ctxreport.KindCompaction {
@@ -266,6 +264,104 @@ func printTranscriptPeriod(out io.Writer, r ctxreport.Result, p ctxreport.Params
 		d := ctxreport.Distribution(by)
 		fmt.Fprintf(out, "  by requests, older than %d: p25 %s  p50 %s  p75 %s\n", age, cli.PercentOf(d.P25), cli.PercentOf(d.P50), cli.PercentOf(d.P75))
 	}
+}
+
+// maxProjects is the number of projects the starting size section lists.
+const maxProjects = 10
+
+// printStartingSize prints the starting sizes of a period, overall and by
+// project, with the share of the prompt tokens read that they were.
+func printStartingSize(out io.Writer, floors []ctxreport.Floor) {
+	fmt.Fprintln(out, "\nStarting size of the conversations (first request, transcripts)")
+	if len(floors) == 0 {
+		fmt.Fprintln(out, "  none in this period")
+		return
+	}
+	d, base, read := floorStats(floors)
+	fmt.Fprintf(out, "  %d conversations: p10 %s  p50 %s  p90 %s  max %s tokens; a reset cannot remove it, the advice counts the growth above it\n",
+		d.N, cli.TokensK(d.P10), cli.TokensK(d.P50), cli.TokensK(d.P90), cli.TokensK(d.Max))
+	fmt.Fprintf(out, "  %s of the prompt tokens read by the conversations that started in this period was this starting size (%s of %s), which no reset can remove\n",
+		cli.PercentOf(shareOf(base, read)), tokensM(base), tokensM(read))
+
+	type project struct {
+		name   string
+		floors []ctxreport.Floor
+		named  time.Time // time of the conversation the name comes from
+	}
+	home, _ := os.UserHomeDir()
+	byFolder := map[string]*project{}
+	var projects []*project
+	for _, f := range floors {
+		p := byFolder[f.Project]
+		if p == nil {
+			p = &project{name: filepath.Base(f.Project)}
+			byFolder[f.Project] = p
+			projects = append(projects, p)
+		}
+		p.floors = append(p.floors, f)
+		// The working directory of the earliest conversation that has one.
+		if f.Cwd != "" && (p.named.IsZero() || f.Time.Before(p.named)) {
+			p.name, p.named = homeTilde(f.Cwd, home), f.Time
+		}
+	}
+	type line struct {
+		name  string
+		d     ctxreport.Dist
+		share float64
+	}
+	lines := make([]line, len(projects))
+	for i, p := range projects {
+		d, base, read := floorStats(p.floors)
+		lines[i] = line{p.name, d, shareOf(base, read)}
+	}
+	sort.Slice(lines, func(i, j int) bool {
+		if lines[i].d.P50 != lines[j].d.P50 {
+			return lines[i].d.P50 > lines[j].d.P50
+		}
+		return lines[i].name < lines[j].name
+	})
+	fmt.Fprintln(out, "  by project, largest p50 first (starting size share of the prompt tokens read):")
+	w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
+	for _, l := range lines[:min(len(lines), maxProjects)] {
+		fmt.Fprintf(w, "    %s\t%s\tp50 %s\tmax %s\t%s\n", l.name, cli.Plural(l.d.N, "conversation"),
+			cli.TokensK(l.d.P50), cli.TokensK(l.d.Max), cli.PercentOf(l.share))
+	}
+	w.Flush()
+	if more := len(lines) - maxProjects; more > 0 {
+		fmt.Fprintf(out, "    %s not shown\n", cli.Plural(more, "more project"))
+	}
+}
+
+// floorStats is the distribution of the starting sizes, and the prompt tokens
+// read that were the starting size, of all those read.
+func floorStats(floors []ctxreport.Floor) (d ctxreport.Dist, base, read int64) {
+	sizes := make([]float64, len(floors))
+	for i, f := range floors {
+		sizes[i] = float64(f.PromptTokens)
+		read, base = read+f.PromptRead, base+f.FloorRead
+	}
+	return ctxreport.Distribution(sizes), base, read
+}
+
+func shareOf(part, total int64) float64 {
+	if total == 0 {
+		return 0
+	}
+	return float64(part) / float64(total)
+}
+
+// homeTilde writes the home directory at the start of path as ~.
+func homeTilde(path, home string) string {
+	if home == "" {
+		return path
+	}
+	if path == home {
+		return "~"
+	}
+	if rest, ok := strings.CutPrefix(path, home+string(filepath.Separator)); ok {
+		return "~" + string(filepath.Separator) + rest
+	}
+	return path
 }
 
 // tokensM formats a token count in millions: 10.1M.

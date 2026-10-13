@@ -94,6 +94,25 @@ type Result struct {
 type Floor struct {
 	Time         time.Time
 	PromptTokens int
+	// Project is the conversation's project folder, Cwd its working directory.
+	Project, Cwd string
+	// PromptRead is the prompt tokens of its requests in the period, and
+	// FloorRead the part of them that was the floor: the lesser of each and
+	// PromptTokens.
+	PromptRead, FloorRead int64
+	requests              []transcript.Request
+}
+
+// sumRequests sets the sums of the floor over its requests made when in says so.
+func (f Floor) sumRequests(in func(time.Time) bool) Floor {
+	f.PromptRead, f.FloorRead = 0, 0
+	for _, r := range f.requests {
+		if in(r.Time) {
+			f.PromptRead += int64(r.PromptTokens)
+			f.FloorRead += int64(min(r.PromptTokens, f.PromptTokens))
+		}
+	}
+	return f
 }
 
 // Simulate runs the advisor on the user turns of each conversation.
@@ -156,7 +175,8 @@ func simulateOne(res *Result, c transcript.Conversation, cuts []cut, p Params) {
 	floor := 0
 	if len(c.Requests) > 0 {
 		floor = c.Requests[0].PromptTokens
-		res.Floors = append(res.Floors, Floor{Time: c.Requests[0].Time, PromptTokens: floor})
+		f := Floor{Time: c.Requests[0].Time, PromptTokens: floor, Project: c.Project, Cwd: c.Cwd, requests: c.Requests}
+		res.Floors = append(res.Floors, f.sumRequests(func(time.Time) bool { return true }))
 	}
 	var (
 		st         advisor.State
@@ -271,7 +291,7 @@ func (r Result) Between(from, to time.Time) Result {
 	}
 	for _, f := range r.Floors {
 		if in(f.Time) {
-			out.Floors = append(out.Floors, f)
+			out.Floors = append(out.Floors, f.sumRequests(in))
 		}
 	}
 	for _, a := range r.Advices {

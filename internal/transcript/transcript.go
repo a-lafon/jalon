@@ -2,8 +2,8 @@
 // ~/.claude/projects. The format is internal to Claude Code and changes between
 // versions, so the reader keeps only what the context report needs, skips what
 // it cannot interpret and counts it, so a format change shows up as low coverage
-// instead of wrong numbers. It never keeps conversation text, only sizes and
-// the paths of handoff files.
+// instead of wrong numbers. It never keeps conversation text, only sizes, the
+// paths of handoff files and the working directory.
 package transcript
 
 import (
@@ -28,6 +28,9 @@ import (
 // (sidechains) are left out: they run in their own context.
 type Conversation struct {
 	File string
+	// Project is the folder the file is in, and Cwd the working directory of
+	// its first entry that has one.
+	Project, Cwd string
 	// Turns are the user turns that got an answer, in order.
 	Turns []Turn
 	// Requests are the API requests of the assistant, in order.
@@ -120,7 +123,9 @@ type Compaction struct {
 
 // Coverage counts what the reader did with the lines it saw.
 type Coverage struct {
-	Files int
+	// Found is the number of transcript files ReadDir saw, before the time
+	// filter; Files the number read.
+	Found, Files int
 	// Read is the number of non-empty lines. Interpreted lines fed the
 	// conversation, Ignored lines are known and unused (bookkeeping entries,
 	// subagents, duplicates), Skipped lines could not be interpreted.
@@ -156,12 +161,17 @@ type Reader struct {
 // NewReader returns a Reader with empty coverage.
 func NewReader() *Reader { return &Reader{seen: map[string]bool{}} }
 
-// ReadDir reads every <dir>/<project>/<session>.jsonl whose file was modified at
-// or after since (the zero time reads them all), oldest first.
+// ReadDir reads every <dir>/<project>/<session>.jsonl and <dir>/<session>.jsonl
+// whose file was modified at or after since (the zero time reads them all),
+// oldest first. The second layout is one project's folder.
 func (r *Reader) ReadDir(dir string, since time.Time) ([]Conversation, error) {
-	paths, err := filepath.Glob(filepath.Join(dir, "*", "*.jsonl"))
-	if err != nil {
-		return nil, err
+	var paths []string
+	for _, pattern := range []string{filepath.Join(dir, "*", "*.jsonl"), filepath.Join(dir, "*.jsonl")} {
+		matches, err := filepath.Glob(pattern)
+		if err != nil {
+			return nil, err
+		}
+		paths = append(paths, matches...)
 	}
 	type file struct {
 		path string
@@ -170,7 +180,11 @@ func (r *Reader) ReadDir(dir string, since time.Time) ([]Conversation, error) {
 	var files []file
 	for _, p := range paths {
 		info, err := os.Stat(p)
-		if err != nil || !info.Mode().IsRegular() || info.ModTime().Before(since) {
+		if err != nil || !info.Mode().IsRegular() {
+			continue
+		}
+		r.Coverage.Found++
+		if info.ModTime().Before(since) {
 			continue
 		}
 		files = append(files, file{p, info.ModTime()})
@@ -208,6 +222,7 @@ type entry struct {
 	IsMeta           bool   `json:"isMeta"`
 	IsCompactSummary bool   `json:"isCompactSummary"`
 	SessionID        string `json:"sessionId"`
+	Cwd              string `json:"cwd"`
 	Origin           *struct {
 		Kind string `json:"kind"`
 	} `json:"origin"`
@@ -236,7 +251,7 @@ type message struct {
 // Read reads one session from rd. name is only kept as the conversation's File.
 func (r *Reader) Read(name string, rd io.Reader) (Conversation, error) {
 	r.Coverage.Files++
-	conv := Conversation{File: name, SessionID: strings.TrimSuffix(filepath.Base(name), ".jsonl")}
+	conv := Conversation{File: name, Project: filepath.Dir(name), SessionID: strings.TrimSuffix(filepath.Base(name), ".jsonl")}
 	br := bufio.NewReaderSize(rd, 1<<20)
 
 	var pending *Turn // a user prompt that has not been answered yet
@@ -264,6 +279,9 @@ func (r *Reader) Read(name string, rd io.Reader) (Conversation, error) {
 // add folds one entry into the conversation and updates the coverage.
 func (r *Reader) add(conv *Conversation, pending **Turn, lastMessageID *string, e entry) {
 	ts, tsErr := time.Parse(time.RFC3339Nano, e.Timestamp)
+	if conv.Cwd == "" {
+		conv.Cwd = e.Cwd
+	}
 	if e.SessionID != "" && !e.IsSidechain && !slices.Contains(conv.Sessions, e.SessionID) {
 		conv.Sessions = append(conv.Sessions, e.SessionID)
 	}

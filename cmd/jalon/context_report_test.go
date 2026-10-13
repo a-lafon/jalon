@@ -201,6 +201,52 @@ func TestContextReportImpactFromTranscripts(t *testing.T) {
 	}
 }
 
+// floor is a conversation of project folder, in working directory cwd, that
+// started at size at minute m and read read prompt tokens, base of them below it.
+func floor(folder, cwd string, m, size int, read, base int64) ctxreport.Floor {
+	return ctxreport.Floor{Time: time.Date(2026, 10, 12, 9, m, 0, 0, time.UTC), PromptTokens: size,
+		Project: folder, Cwd: cwd, PromptRead: read, FloorRead: base}
+}
+
+func TestStartingSizeByProject(t *testing.T) {
+	t.Setenv("HOME", "/home/me")
+	floors := []ctxreport.Floor{
+		// The later conversation of the squad ran in a subfolder: the earliest names it.
+		floor("/t/-home-me-projects-squad", "/home/me/projects/squad/sub", 30, 71_000, 213_000, 213_000),
+		floor("/t/-home-me-projects-squad", "/home/me/projects/squad", 10, 67_000, 201_000, 201_000),
+		floor("/t/-home-me-projects-squad", "", 5, 74_000, 222_000, 222_000),
+		floor("/t/-home-me-perso-cairn", "/home/me/perso/cairn", 0, 43_000, 430_000, 86_000),
+		floor("/t/-home-me-perso-cairn", "/home/me/perso/cairn", 1, 47_000, 470_000, 94_000),
+		// Starts at 70K, then reads 70K, 170K and 270K: 210K of 510K. No cwd.
+		floor("/t/-work-app", "", 2, 70_000, 510_000, 210_000),
+	}
+	var out bytes.Buffer
+	printStartingSize(&out, floors)
+	checkGolden(t, "context-report-starting-size.golden", out.String())
+
+	out.Reset()
+	printStartingSize(&out, floors[len(floors)-1:])
+	if want := "  41% of the prompt tokens read by the conversations that started in this period was this starting size (0.2M of 0.5M)"; !strings.Contains(out.String(), want) {
+		t.Errorf("report does not contain %q:\n%s", want, out.String())
+	}
+}
+
+func TestStartingSizeListsTenProjects(t *testing.T) {
+	var floors []ctxreport.Floor
+	for i := range 12 {
+		floors = append(floors, floor(fmt.Sprintf("/t/p%02d", i), "", i, 10_000*(i+1), 1, 1))
+	}
+	var out bytes.Buffer
+	printStartingSize(&out, floors)
+	report := out.String()
+	if strings.Count(report, " 1 conversation ") != 10 || !strings.Contains(report, "    2 more projects not shown\n") {
+		t.Errorf("want the 10 largest and 2 more:\n%s", report)
+	}
+	if !strings.Contains(report, "    p11  1 conversation  p50 120K") || strings.Contains(report, "p00") || strings.Contains(report, "p01") {
+		t.Errorf("want the largest p50 first and the two smallest left out:\n%s", report)
+	}
+}
+
 func TestContextReportRejectsBadFlags(t *testing.T) {
 	configPath := configWith(t, "")
 	for name, args := range map[string][]string{
@@ -233,6 +279,58 @@ func TestContextReportConfigFile(t *testing.T) {
 			t.Errorf("err = %v, want it to name %s", err, missing)
 		}
 	})
+}
+
+func TestContextReportNamesTheLayoutsWhenNoFileIsFound(t *testing.T) {
+	dir := t.TempDir()
+	var out bytes.Buffer
+	if err := runContextReport(context.Background(), []string{"-config", configWith(t, ""), "-transcripts", dir}, &out); err != nil {
+		t.Fatal(err)
+	}
+	want := "  0 files, 0 entries read: 0 used, 0 known and unused, 0 skipped (0.0%); 0 distinct compactions\n" +
+		"  no transcript file found: the report reads " + filepath.Join(dir, "<project>", "<session>.jsonl") + " and " + filepath.Join(dir, "<session>.jsonl") + "\n"
+	if !strings.Contains(out.String(), want) || strings.Contains(out.String(), "none modified in this window") {
+		t.Errorf("report does not contain only %q:\n%s", want, out.String())
+	}
+}
+
+func TestContextReportSaysNoFileIsInTheWindow(t *testing.T) {
+	dir := t.TempDir()
+	old := time.Now().Add(-3 * time.Hour)
+	writeTranscript(t, dir, tUser(old), tAssistant(old.Add(time.Minute), "m1", 40_000))
+	if err := os.Chtimes(filepath.Join(dir, "-project", "session.jsonl"), old, old); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	if err := runContextReport(context.Background(), []string{"-config", configWith(t, ""), "-since", "1h", "-transcripts", dir}, &out); err != nil {
+		t.Fatal(err)
+	}
+	if want := "0 distinct compactions\n  1 transcript file found, none modified in this window\n"; !strings.Contains(out.String(), want) {
+		t.Errorf("report does not contain %q:\n%s", want, out.String())
+	}
+	if strings.Contains(out.String(), "no transcript file found") {
+		t.Errorf("a file exists, outside the window:\n%s", out.String())
+	}
+}
+
+func TestContextReportReadsOneProjectFolder(t *testing.T) {
+	now := time.Now()
+	dir := t.TempDir()
+	writeTranscript(t, dir, tUser(now.Add(-time.Hour)), tAssistant(now.Add(-59*time.Minute), "m1", 40_000))
+	var out bytes.Buffer
+	args := []string{"-config", configWith(t, ""), "-since", "2h", "-transcripts", filepath.Join(dir, "-project")}
+	if err := runContextReport(context.Background(), args, &out); err != nil {
+		t.Fatal(err)
+	}
+	// No entry has a cwd: the project is named by its folder.
+	for _, want := range []string{"1 files", "1 conversations: p10 40K", "    -project  1 conversation  p50 40K  max 40K  100%"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("report does not contain %q:\n%s", want, out.String())
+		}
+	}
+	if strings.Contains(out.String(), "no transcript file found") {
+		t.Errorf("files were found:\n%s", out.String())
+	}
 }
 
 func TestContextReportFailsWithoutTranscriptsDirectory(t *testing.T) {
