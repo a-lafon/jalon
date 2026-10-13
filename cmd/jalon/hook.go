@@ -25,13 +25,20 @@ import (
 // never loses the output.
 var hookTimeout = 500 * time.Millisecond
 
-// resetInstruction is what the session's model is asked to do when a reset is
-// advised. It is the same for every client. {tokens}, {dir} (the absolute
-// handoff folder), {name} (the handoff file name prefix) and {header} (the
-// handoff's first lines) are filled in, and so are the client's commands:
-// {clear}, {compact} and {include}, the prefix that attaches a file.
-const resetInstruction = `Jalon: this conversation holds about {tokens}K tokens of context. Answer the user's message first.
-Then end your reply with a short section written as a Markdown blockquote (every line starts with "> "), whose first words are
+// The instruction is what the session's model is asked to do when a reset is
+// advised: an opening, which says when to give the section, then the body,
+// which describes it. The body is the same for both hooks and every client, so
+// the advice cannot drift between them. {tokens} is filled in the openings;
+// {dir} (the absolute handoff folder), {name} (the handoff file name prefix)
+// and {header} (the handoff's first lines) in the body, and so are the
+// client's commands: {clear}, {compact} and {include}, the prefix that
+// attaches a file.
+const (
+	promptOpening = `Jalon: this conversation holds about {tokens}K tokens of context. Answer the user's message first.
+Then end your reply with `
+	stopOpening = advisor.MessagePrefix + `{tokens}K tokens. Your answer to the user is done and shown: do not repeat it.
+Add, as your last message, `
+	instructionBody = `a short section written as a Markdown blockquote (every line starts with "> "), whose first words are
 **Jalon** —, in the language the user writes in; it recommends ONE option:
 1. New session: the latest request starts a task unrelated to the earlier work. Say so in one line.
 2. Handoff: the same task continues and much state must carry over. Write {dir}/{name}-<short-slug>.md.
@@ -50,6 +57,7 @@ a new session or {clear}: its result would reach a conversation that lost why it
 Recommend a compact whose line keeps the running work, what to do with its result, and the handoff path and first lines
 of option 2; add one line saying the user can ask for that handoff once the work has reported.
 Keep the section under 10 lines, apart from the handoff file. Give it in this reply only: do not repeat it in later replies.`
+)
 
 // reminderPrefix starts the stop hook's reason when the reply lacks the section
 // asked at the start of the turn. The context report tells it from an advice
@@ -65,7 +73,7 @@ func runHook(ctx context.Context, args []string, stdin io.Reader, out io.Writer)
 		case "prompt":
 			return runPromptHook(ctx, args[1:], stdin, out, time.Now())
 		case "stop":
-			return runStopHook(ctx, args[1:], stdin, out)
+			return runStopHook(ctx, args[1:], stdin, out, time.Now())
 		}
 	}
 	return errors.New(hookUsage)
@@ -113,48 +121,17 @@ func runPromptHook(ctx context.Context, args []string, stdin io.Reader, out io.W
 			return nil
 		}
 
-		handoffDir, root := filepath.Join(".jalon", "handoffs"), ""
-		if prompt.Dir != "" {
-			root = projectRoot(prompt.Dir)
-			handoffDir = filepath.Join(root, ".jalon", "handoffs")
-		}
 		// A resume shows as the handoff's path in the prompt: the advice's own
 		// resume line holds it. Only the session's first prompt written by a
 		// person is read, when the hook holds no state for it yet: a later path
 		// is a mention, not a resume.
-		if _, seen := advisor.Load(dir, prompt.Session); root != "" && !seen {
-			if name := resumedHandoff(prompt.Text, root); name != "" {
+		if _, seen := advisor.Load(dir, prompt.Session); prompt.Dir != "" && !seen {
+			if name := resumedHandoff(prompt.Text, projectRoot(prompt.Dir)); name != "" {
 				_ = advisor.SetHandoff(dir, prompt.Session, name, threadOf(name), "")
 			}
 		}
-		// The size is read from the client's own record of the conversation, so
-		// the hook needs no status line.
-		size := adapter.ReadTail(prompt, "", false).Size
-		if size <= 0 {
-			// A session's first prompt has no size yet: its ID still tells the stop
-			// hook its turn.
-			if prompt.ID != "" {
-				_ = advisor.SetPrompt(dir, prompt.Session, prompt.ID)
-			}
-			return nil
-		}
-		if advisor.Record(dir, prompt.Session, size, now, prompt.ID, false) != nil {
-			return nil
-		}
-		st, ok := advisor.Load(dir, prompt.Session)
+		st, ok := measure(dir, adapter, prompt, adapter.ReadTail(prompt, "", false).Size, cfg, now)
 		if !ok {
-			return nil
-		}
-		// The floor is what the conversation starts with, read once from the head
-		// of the transcript and kept; the first advice counts the growth above it.
-		if st.Floor == 0 {
-			if floor, ok := adapter.ContextFloor(prompt); ok && advisor.SetFloor(dir, prompt.Session, floor) == nil {
-				st.Floor = floor
-			}
-		}
-		advice, _ := advisor.Advise(advisor.State{LastAdvised: st.LastAdvised}, st.Size, st.Floor,
-			advisor.Config{AdviseTokens: cfg.Context.AdviseTokens, StepTokens: cfg.Context.AdviseStepTokens})
-		if advice.Kind != advisor.Reset {
 			return nil
 		}
 		// Only a session a person typed in is advised: in one a program drives, the
@@ -168,47 +145,14 @@ func runPromptHook(ctx context.Context, args []string, stdin io.Reader, out io.W
 				return nil
 			}
 		}
-
-		// A handoff written from the last advice's name is the parent of the next one.
-		parent := st.Parent
-		if st.Proposed != "" {
-			if name := lastHandoff(handoffDir, st.Proposed+"-"); name != "" {
-				parent = name
-			}
+		body, ok := recordAdvice(dir, adapter, prompt, st, now)
+		if !ok {
+			return nil
 		}
-		thread := st.Thread
-		if thread == "" {
-			if thread, err = newThreadID(threadRand); err != nil {
-				return nil
-			}
-		}
-		day := now.Format("2006-01-02")
-		name := day + "/" + now.Format("1504") + "-" + thread
-		// The folder is best effort: the advice is given even when it cannot be made.
-		if root != "" {
-			_ = ensureHandoffFolder(root, day)
-		}
-		header := fmt.Sprintf(`Its first line is "Session: %s".`, prompt.Session)
-		if parent != "" {
-			header = fmt.Sprintf(`Its first lines are "Follows: %s" and "Session: %s".`, parent, prompt.Session)
-		}
-		// Record the advice before it is shown, so the next prompt does not repeat it.
-		_ = advisor.MarkAdvised(dir, prompt.Session, st.Size, now, prompt.ID)
-		_ = advisor.SetHandoff(dir, prompt.Session, parent, thread, name)
-
 		kTokens := thousandsK(st.Size)
-		cmds := adapter.Commands()
-		instruction := strings.NewReplacer(
-			"{tokens}", strings.TrimSuffix(kTokens, "K"),
-			"{dir}", handoffDir,
-			"{name}", name,
-			"{header}", header,
-			"{clear}", cmds.Clear,
-			"{compact}", cmds.Compact,
-			"{include}", cmds.Include,
-		).Replace(resetInstruction)
 		reply, err := adapter.Reply(
-			advisor.MessagePrefix+kTokens+" tokens, a reset proposal follows the answer.", instruction)
+			advisor.MessagePrefix+kTokens+" tokens, a reset proposal follows the answer.",
+			strings.ReplaceAll(promptOpening, "{tokens}", strings.TrimSuffix(kTokens, "K"))+body)
 		if err != nil {
 			return nil
 		}
@@ -221,8 +165,9 @@ func runPromptHook(ctx context.Context, args []string, stdin io.Reader, out io.W
 // runStopHook works as a client's stop hook (Claude Code's Stop), run when the
 // model ends a turn that a person's prompt started. It blocks the end of the
 // turn once, so the model adds the section, when the reply lacks the section
-// the prompt hook asked for. Like the prompt hook, it never fails the turn.
-func runStopHook(ctx context.Context, args []string, stdin io.Reader, out io.Writer) error {
+// the prompt hook asked for, or when the context crossed the threshold during
+// the turn. Like the prompt hook, it never fails the turn.
+func runStopHook(ctx context.Context, args []string, stdin io.Reader, out io.Writer, now time.Time) error {
 	flags := flag.NewFlagSet("hook stop", flag.ContinueOnError)
 	configPath := flags.String("config", config.DefaultPath(), "path to the config file")
 	clientName := flags.String("client", defaultClient, "coding agent that runs the hook")
@@ -255,43 +200,61 @@ func runStopHook(ctx context.Context, args []string, stdin io.Reader, out io.Wri
 		if err != nil {
 			return nil
 		}
-		// Only a turn the prompt hook saw start from a person's prompt, and
-		// advised at: not one a notice or another session started.
+		// Only a turn the prompt hook saw start from a person's prompt: not one
+		// a notice or another session started.
 		st, ok := advisor.Load(dir, ev.Session)
-		if !ok || st.Prompt != ev.ID || st.AdvisedPrompt != ev.ID {
-			return nil
-		}
-		cfg, err := cli.LoadConfig(flags, *configPath)
-		if err != nil || !cfg.Context.Enabled {
-			return nil
-		}
-		// The instruction asks to end the reply with the section, so only the
-		// last message counts.
-		if strings.Contains(ev.LastMessage, "**Jalon**") {
-			return nil
-		}
-		// After a compaction during the turn, the advice is moot.
-		if advisor.Compacted(st.LastAdvised, adapter.ReadTail(ev.Prompt, "", false).Size) {
+		if !ok || st.Prompt != ev.ID {
 			return nil
 		}
 		// A program that runs claude -p reads the last message as its output: a
 		// block would replace it. Only a turn whose prompt a person typed is
 		// blocked; that is looked for only before blocking, since in a program's
 		// session the search reads 8 MB.
-		if !adapter.ReadTail(ev.Prompt, ev.ID, true).Typed {
+		typed := func() bool { return adapter.ReadTail(ev.Prompt, ev.ID, true).Typed }
+		cfg, err := cli.LoadConfig(flags, *configPath)
+		if err != nil || !cfg.Context.Enabled {
 			return nil
 		}
-		handoffDir := handoffFolder(ev.Dir)
-		reason := reminderPrefix + ", context at " + thousandsK(st.LastAdvised) +
-			" tokens: your reply did not end with the section asked at the start of this turn. Do not repeat your answer.\n"
-		if written := lastHandoff(handoffDir, st.Proposed+"-"); st.Proposed != "" && written != "" {
-			reason += "The handoff " + filepath.Join(handoffDir, written) + " is already written: do not write another file, give the section with its lines to copy for it.\n"
+
+		if st.AdvisedPrompt == ev.ID {
+			// The instruction asks to end the reply with the section, so only the
+			// last message counts.
+			if strings.Contains(ev.LastMessage, "**Jalon**") {
+				return nil
+			}
+			// After a compaction during the turn, the advice is moot.
+			if advisor.Compacted(st.LastAdvised, adapter.ReadTail(ev.Prompt, "", false).Size) || !typed() {
+				return nil
+			}
+			handoffDir := handoffFolder(ev.Dir)
+			reason := reminderPrefix + ", context at " + thousandsK(st.LastAdvised) +
+				" tokens: your reply did not end with the section asked at the start of this turn. Do not repeat your answer.\n"
+			if written := lastHandoff(handoffDir, st.Proposed+"-"); st.Proposed != "" && written != "" {
+				reason += "The handoff " + filepath.Join(handoffDir, written) + " is already written: do not write another file, give the section with its lines to copy for it.\n"
+			}
+			// One sentence, not the body: the model got the body at the start of the
+			// turn, and Claude Code's terminal prints the whole reason as an error.
+			reason += "Add now, as your last message, that section: a Markdown blockquote starting with **Jalon** — that recommends ONE option, a new session, a handoff written to " +
+				filepath.Join(handoffDir, st.Proposed) + "-<short-slug>.md with the lines to copy, or a " + adapter.Commands().Compact + " line."
+			reply, err := stopper.StopReply(reason, "")
+			if err != nil {
+				return nil
+			}
+			return reply
 		}
-		// One sentence, not the body: the model got the body at the start of the
-		// turn, and Claude Code's terminal prints the whole reason as an error.
-		reason += "Add now, as your last message, that section: a Markdown blockquote starting with **Jalon** — that recommends ONE option, a new session, a handoff written to " +
-			filepath.Join(handoffDir, st.Proposed) + "-<short-slug>.md with the lines to copy, or a " + adapter.Commands().Compact + " line."
-		reply, err := stopper.StopReply(reason, "")
+
+		st, ok = measure(dir, adapter, ev.Prompt, adapter.ReadTail(ev.Prompt, "", false).Size, cfg, now)
+		if !ok || !typed() {
+			return nil
+		}
+		body, ok := recordAdvice(dir, adapter, ev.Prompt, st, now)
+		if !ok {
+			return nil
+		}
+		kTokens := thousandsK(st.Size)
+		reply, err := stopper.StopReply(
+			strings.ReplaceAll(stopOpening, "{tokens}", strings.TrimSuffix(kTokens, "K"))+body,
+			advisor.MessagePrefix+kTokens+" tokens, a reset proposal follows.")
 		if err != nil {
 			return nil
 		}
@@ -301,6 +264,71 @@ func runStopHook(ctx context.Context, args []string, stdin io.Reader, out io.Wri
 	return nil
 }
 
+// measure records size, the context size of the turn of p, in the session's
+// state, with the floor when the state holds none, and runs the advisor. It
+// returns the state, and true when a reset is advised.
+func measure(dir string, adapter client.Adapter, p client.Prompt, size int, cfg config.Config, now time.Time) (advisor.Session, bool) {
+	// The size is read from the client's own record of the conversation, so
+	// the hook needs no status line.
+	if size <= 0 {
+		// A session's first prompt has no size yet: its ID still tells the stop
+		// hook its turn.
+		if p.ID != "" {
+			_ = advisor.SetPrompt(dir, p.Session, p.ID)
+		}
+		return advisor.Session{}, false
+	}
+	if advisor.Record(dir, p.Session, size, now, p.ID, false) != nil {
+		return advisor.Session{}, false
+	}
+	st, ok := advisor.Load(dir, p.Session)
+	if !ok {
+		return st, false
+	}
+	// The floor is what the conversation starts with, read once from the head
+	// of the transcript and kept; the first advice counts the growth above it.
+	if st.Floor == 0 {
+		if floor, ok := adapter.ContextFloor(p); ok && advisor.SetFloor(dir, p.Session, floor) == nil {
+			st.Floor = floor
+		}
+	}
+	advice, _ := advisor.Advise(advisor.State{LastAdvised: st.LastAdvised}, st.Size, st.Floor,
+		advisor.Config{AdviseTokens: cfg.Context.AdviseTokens, StepTokens: cfg.Context.AdviseStepTokens})
+	return st, advice.Kind == advisor.Reset
+}
+
+// recordAdvice does what an advice at the state's size needs before it is
+// shown: it names the next handoff, creates its folder, and records the advice
+// at the prompt of p, so the next prompt does not repeat it. It returns the
+// instruction body, filled in.
+func recordAdvice(dir string, adapter client.Adapter, p client.Prompt, st advisor.Session, now time.Time) (string, bool) {
+	handoffDir := handoffFolder(p.Dir)
+	// A handoff written from the last advice's name is the parent of the next one.
+	parent := st.Parent
+	if st.Proposed != "" {
+		if name := lastHandoff(handoffDir, st.Proposed+"-"); name != "" {
+			parent = name
+		}
+	}
+	thread := st.Thread
+	if thread == "" {
+		var err error
+		if thread, err = newThreadID(threadRand); err != nil {
+			return "", false
+		}
+	}
+	day := now.Format("2006-01-02")
+	name := day + "/" + now.Format("1504") + "-" + thread
+	// The folder is best effort: the advice is given even when it cannot be made.
+	if p.Dir != "" {
+		_ = ensureHandoffFolder(projectRoot(p.Dir), day)
+	}
+	// Record the advice before it is shown, so the next prompt does not repeat it.
+	_ = advisor.MarkAdvised(dir, p.Session, st.Size, now, p.ID)
+	_ = advisor.SetHandoff(dir, p.Session, parent, thread, name)
+	return fillBody(adapter, handoffDir, name, handoffHeader(parent, p.Session)), true
+}
+
 // handoffFolder is the handoff folder of the project in dir, relative when the
 // client gave no directory.
 func handoffFolder(dir string) string {
@@ -308,6 +336,28 @@ func handoffFolder(dir string) string {
 		return filepath.Join(".jalon", "handoffs")
 	}
 	return filepath.Join(projectRoot(dir), ".jalon", "handoffs")
+}
+
+// handoffHeader is what the instruction asks the handoff's first lines to be.
+func handoffHeader(parent, session string) string {
+	if parent != "" {
+		return fmt.Sprintf(`Its first lines are "Follows: %s" and "Session: %s".`, parent, session)
+	}
+	return fmt.Sprintf(`Its first line is "Session: %s".`, session)
+}
+
+// fillBody is the instruction body for the handoff name prefix name in
+// handoffDir, with the client's commands.
+func fillBody(adapter client.Adapter, handoffDir, name, header string) string {
+	cmds := adapter.Commands()
+	return strings.NewReplacer(
+		"{dir}", handoffDir,
+		"{name}", name,
+		"{header}", header,
+		"{clear}", cmds.Clear,
+		"{compact}", cmds.Compact,
+		"{include}", cmds.Include,
+	).Replace(instructionBody)
 }
 
 // threadRand is where new thread IDs are drawn from; tests replace it.

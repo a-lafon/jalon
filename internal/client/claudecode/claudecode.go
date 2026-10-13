@@ -116,7 +116,7 @@ func (Adapter) Reply(userMessage, modelContext string) ([]byte, error) {
 }
 
 // StopReply makes Claude Code go on with the turn: the reason reaches the model
-// as a meta user message, and the terminal also prints it as a hook error.
+// as a meta user message, and is not shown to the user.
 func (Adapter) StopReply(reason, userMessage string) ([]byte, error) {
 	out := map[string]any{"decision": "block", "reason": reason}
 	if userMessage != "" {
