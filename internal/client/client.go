@@ -115,8 +115,7 @@ type Installer interface {
 type Display int
 
 const (
-	// NoDisplay adds and removes no status line; it only updates the path in
-	// Jalon's.
+	// NoDisplay leaves the status line as it is.
 	NoDisplay Display = iota
 	// StatusLine installs Jalon's status line when there is none.
 	StatusLine
@@ -145,6 +144,18 @@ type ModInstaller interface {
 	// ReadMod tells what the settings record of the mod, without running
 	// anything; settings it cannot read show no mod.
 	ReadMod(settings []byte) ModState
+}
+
+// SkillInstaller is implemented by adapters whose client takes a user skill,
+// which gives Jalon's commands to the user. jalon init reads and writes the
+// file; a SkillInstaller only gives its path and content.
+type SkillInstaller interface {
+	// SkillPath is the skill file in the user's client folder.
+	SkillPath() (string, error)
+	// Skill is the content jalon init writes.
+	Skill() []byte
+	// OwnsSkill tells whether content holds the marker of a skill Jalon wrote.
+	OwnsSkill(content []byte) bool
 }
 
 // ModState is the mod as the client's settings record it.
