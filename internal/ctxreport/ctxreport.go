@@ -17,14 +17,20 @@ type Params struct {
 	Advisor advisor.Config
 	// StaleAfterTurns is the age in user turns after which a tool result is stale.
 	StaleAfterTurns int
+	// StopHook replays the stop hook's advice at the end of a turn too.
+	StopHook bool
 }
 
-// Advice is an advice the advisor would have given at a user turn.
+// Advice is an advice the advisor would have given at a user turn, at its
+// start or, when AtStop is set, at its end.
 type Advice struct {
-	File         string
-	Time         time.Time
-	Turn         int
-	PromptTokens int
+	File string
+	Time time.Time
+	// Turn is the index of the turn, Request the index of its first request,
+	// or of its last one for an advice at its end.
+	Turn, Request int
+	AtStop        bool
+	PromptTokens  int
 	// StaleShare is the share of the context bytes taken by tool results older
 	// than StaleAfterTurns user turns.
 	StaleShare float64
@@ -55,9 +61,9 @@ type SimReset struct {
 	// previous reset, as the transcript records it.
 	AdviceGiven bool
 	// CrossedMidTurn is set when it never fired although a request went over the
-	// threshold: the context grew past it inside one turn's tool loop, or at a
-	// turn the prompt hook does not act on, and the user reset before the next
-	// turn it acts on.
+	// threshold: the context grew past it at a turn's last request, inside a
+	// turn when the stop hook is not replayed, or at a turn no hook acts on,
+	// and the user reset before the next turn a hook acts on.
 	CrossedMidTurn bool
 	// Lead is the number of user turns started between the first advice and the
 	// reset.
@@ -118,7 +124,8 @@ func (f Floor) sumRequests(in func(time.Time) bool) Floor {
 
 // Simulate runs the advisor on the user turns of each conversation that the
 // prompt hook would act on: prompts a person typed, in a conversation a person
-// typed in before.
+// typed in before. With p.StopHook, it also runs it at the end of the turns
+// the stop hook would act on.
 func Simulate(convs []transcript.Conversation, p Params) Result {
 	var res Result
 	// A handoff resumed more than once from the same conversation is one reset.
@@ -199,16 +206,39 @@ func simulateOne(res *Result, c transcript.Conversation, cuts []cut, p Params) {
 		}
 		segAdvices, st, prev = nil, advisor.State{}, 0
 	}
-	applyCompactions := func(turns int) {
-		for ; next < len(cuts) && cuts[next].afterTurns <= turns; next++ {
+	// applyCompactions closes the segment at each cut that comes after turns
+	// user turns and requests requests at most.
+	applyCompactions := func(turns, requests int) {
+		for ; next < len(cuts) && cuts[next].afterTurns <= turns && cuts[next].afterRequests <= requests; next++ {
 			ct := cuts[next]
 			closeSegment(&ct)
 			segBlock, segReq = ct.afterBlocks, ct.afterRequests
 		}
 	}
+	// evaluate runs the advisor on size at turn i, from request req, with the
+	// context of the blocks before block end, and reports whether it advised.
+	evaluate := func(i, req, size, end int, at time.Time, atStop bool) bool {
+		a, ns := advisor.Advise(st, size, floor, p.Advisor)
+		st = ns
+		if a.Kind != advisor.Reset {
+			return false
+		}
+		context := c.Blocks[min(segBlock, end):min(end, len(c.Blocks))]
+		adv := Advice{
+			File: c.File, Time: at, Turn: i, Request: req, AtStop: atStop, PromptTokens: size,
+			StaleShare: staleShare(context, func(b transcript.Block) int { return i - b.Turn }, p.StaleAfterTurns),
+		}
+		for _, age := range RequestAges {
+			adv.StaleByRequests = append(adv.StaleByRequests,
+				staleShare(context, func(b transcript.Block) int { return req - b.Request }, age))
+		}
+		segAdvices = append(segAdvices, adv)
+		res.Advices = append(res.Advices, adv)
+		return true
+	}
 
 	for i, t := range c.Turns {
-		applyCompactions(i)
+		applyCompactions(i, len(c.Requests))
 		if advisor.Compacted(prev, t.PromptTokens) {
 			// The context shrank without a compaction entry (a /clear, or a format
 			// the reader does not know): start over.
@@ -216,27 +246,25 @@ func simulateOne(res *Result, c transcript.Conversation, cuts []cut, p Params) {
 			segBlock, segReq = t.Block, t.Request
 		}
 		prev = t.PromptTokens
-		if !t.Advisable {
+		advised := t.Advisable && evaluate(i, t.Request, t.PromptTokens, t.Block+1, t.Time, false)
+
+		// The stop hook acts on a typed prompt the prompt hook did not advise at.
+		end := len(c.Requests) // the turn's requests are [t.Request, end)
+		if i+1 < len(c.Turns) {
+			end = c.Turns[i+1].Request
+		}
+		if !p.StopHook || !t.Human || advised || end-t.Request < 2 {
 			continue
 		}
-		a, ns := advisor.Advise(st, t.PromptTokens, floor, p.Advisor)
-		st = ns
-		if a.Kind != advisor.Reset {
-			continue
+		// A compaction inside the turn comes first. The hook reads the request
+		// before the last: the transcript does not hold the last one yet.
+		applyCompactions(i+1, end-1)
+		if last := end - 1; last-1 >= segReq {
+			blocks := sort.Search(len(c.Blocks), func(k int) bool { return c.Blocks[k].Request > last })
+			evaluate(i, last, c.Requests[last-1].PromptTokens, blocks, c.Requests[last].Time, true)
 		}
-		context := c.Blocks[min(segBlock, t.Block):min(t.Block+1, len(c.Blocks))]
-		adv := Advice{
-			File: c.File, Time: t.Time, Turn: i, PromptTokens: t.PromptTokens,
-			StaleShare: staleShare(context, func(b transcript.Block) int { return i - b.Turn }, p.StaleAfterTurns),
-		}
-		for _, age := range RequestAges {
-			adv.StaleByRequests = append(adv.StaleByRequests,
-				staleShare(context, func(b transcript.Block) int { return t.Request - b.Request }, age))
-		}
-		segAdvices = append(segAdvices, adv)
-		res.Advices = append(res.Advices, adv)
 	}
-	applyCompactions(len(c.Turns))
+	applyCompactions(len(c.Turns), len(c.Requests))
 	closeSegment(nil)
 }
 
@@ -262,8 +290,9 @@ func resetResult(c transcript.Conversation, ct cut, advices []Advice, segReq int
 	first := advices[0]
 	r.Advised = true
 	r.Lead = max(ct.afterTurns-1-first.Turn, 0)
-	for _, req := range c.Requests[:min(ct.afterRequests, len(c.Requests))] {
-		if req.Turn >= first.Turn && req.PromptTokens > first.PromptTokens {
+	// From the advice's request: an advice at a turn's end leaves out its turn.
+	for _, req := range c.Requests[first.Request:max(first.Request, min(ct.afterRequests, len(c.Requests)))] {
+		if req.PromptTokens > first.PromptTokens {
 			r.Beyond += req.PromptTokens - first.PromptTokens
 		}
 	}

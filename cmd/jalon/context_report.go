@@ -31,6 +31,7 @@ func runContextReport(ctx context.Context, args []string, out io.Writer) error {
 	sinceFlag := flags.String("since", "7d", "time window, as a Go duration such as 90m or 24h (Nd for days)")
 	transcripts := flags.String("transcripts", defaultTranscripts(), "directory of the Claude Code transcripts")
 	split := flags.String("split", "", "comma-separated times (2026-10-12T09:00 or 2026-10-13, local time) that cut the window into periods")
+	stopHook := flags.Bool("stop-hook", true, "replay the stop hook's advice too (false: the prompt hook alone, as 0.1.0)")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -52,6 +53,7 @@ func runContextReport(ctx context.Context, args []string, out io.Writer) error {
 	params := ctxreport.Params{
 		Advisor:         advisor.Config{AdviseTokens: cfg.Context.AdviseTokens, StepTokens: cfg.Context.AdviseStepTokens},
 		StaleAfterTurns: cfg.Context.StaleAfterTurns,
+		StopHook:        *stopHook,
 	}
 
 	if _, err := os.Stat(*transcripts); err != nil {
@@ -242,7 +244,18 @@ func printTranscriptPeriod(out io.Writer, r ctxreport.Result, p ctxreport.Params
 		fmt.Fprintf(out, "\n%d of %d conversations left out of the simulation: no prompt typed by a person (driven by a program).\n",
 			r.Excluded, r.Excluded+r.Conversations)
 	}
-	fmt.Fprintf(out, "\nAdvices no reset followed: %d of %d\n", len(r.Unfollowed), len(r.Advices))
+	atStop := "not replayed (-stop-hook=false)"
+	if p.StopHook {
+		n := 0
+		for _, a := range r.Advices {
+			if a.AtStop {
+				n++
+			}
+		}
+		atStop = fmt.Sprintf("%d of %d", n, len(r.Advices))
+	}
+	fmt.Fprintf(out, "\nSimulated advices at the end of a turn (stop hook): %s\n", atStop)
+	fmt.Fprintf(out, "Advices no reset followed: %d of %d\n", len(r.Unfollowed), len(r.Advices))
 	for _, a := range r.Unfollowed {
 		fmt.Fprintf(out, "  %s  %s tokens\n", a.Time.Local().Format("2006-01-02 15:04"), cli.TokensK(float64(a.PromptTokens)))
 	}

@@ -173,6 +173,87 @@ func TestContextReportReplaysOnlyTheTurnsTheHookActsOn(t *testing.T) {
 	}
 }
 
+func TestContextReportReplaysTheStopHook(t *testing.T) {
+	now := time.Now()
+	at := func(m int) time.Time { return now.Add(-time.Duration(120-m) * time.Minute) }
+	// Each conversation starts at 10K: the advice comes at 210K, again 150K higher.
+	start := []string{tUser(at(0)), tAssistant(at(1), "m1", 10_000)}
+	crossedInside := append(start[:2:2], tUser(at(2)), tAssistant(at(3), "m2", 150_000), tAssistant(at(4), "m3", 314_000),
+		tAssistant(at(5), "m4", 320_000), tCompact(at(6), "c1", "manual", 320_000))
+	tests := map[string]struct {
+		lines []string
+		flags []string
+		want  []string
+		row   string // a row of the simulated resets, when set
+	}{
+		// The stop hook reads 314K, the request before the last; 6K is carried after it.
+		"crossed inside one turn": {
+			lines: crossedInside,
+			want:  []string{"Simulated advices at the end of a turn (stop hook): 1 of 1", "Advices no reset followed: 0 of 1"},
+			row:   `compaction\s+320K\s+0 turns\s+6K\s+no`,
+		},
+		"crossed inside one turn, stop hook left out": {
+			lines: crossedInside,
+			flags: []string{"-stop-hook=false"},
+			want:  []string{"Simulated advices at the end of a turn (stop hook): not replayed (-stop-hook=false)", "Advices no reset followed: 0 of 0"},
+			row:   `compaction\s+320K\s+crossed mid-turn\s+no`,
+		},
+		"crossed by the turn's last request": {
+			lines: append(start[:2:2], tUser(at(2)), tAssistant(at(3), "m2", 150_000), tAssistant(at(4), "m3", 160_000),
+				tAssistant(at(5), "m4", 314_000), tCompact(at(6), "c1", "manual", 314_000)),
+			want: []string{"(stop hook): 0 of 0"},
+			row:  `compaction\s+314K\s+crossed mid-turn\s+no`,
+		},
+		"advised at the turn's start": {
+			lines: append(start[:2:2], tUser(at(2)), tAssistant(at(3), "m2", 215_000), tAssistant(at(4), "m3", 300_000),
+				tAssistant(at(5), "m4", 310_000)),
+			want: []string{"(stop hook): 0 of 1", "215K tokens"},
+		},
+		// The hook then only reminds, even past the step.
+		"advised at the turn's start, grown past the step": {
+			lines: append(start[:2:2], tUser(at(2)), tAssistant(at(3), "m2", 215_000), tAssistant(at(4), "m3", 370_000),
+				tAssistant(at(5), "m4", 380_000)),
+			want: []string{"(stop hook): 0 of 1", "215K tokens"},
+		},
+		"next prompt after an end-of-turn advice": {
+			lines: append(start[:2:2], tUser(at(2)), tAssistant(at(3), "m2", 150_000), tAssistant(at(4), "m3", 260_000),
+				tAssistant(at(5), "m4", 261_000), tUser(at(6)), tAssistant(at(7), "m5", 262_000)),
+			want: []string{"(stop hook): 1 of 1", "Advices no reset followed: 1 of 1", "260K tokens"},
+		},
+		"turn started by a background task's report": {
+			lines: append(start[:2:2], tNotice(at(2)), tAssistant(at(3), "m2", 150_000), tAssistant(at(4), "m3", 260_000),
+				tAssistant(at(5), "m4", 265_000)),
+			want: []string{"(stop hook): 0 of 0"},
+		},
+		// The auto compaction closes the stretch before the hook reads 220K after it.
+		"compaction inside the turn": {
+			lines: append(start[:2:2], tUser(at(2)), tAssistant(at(3), "m2", 150_000), tAssistant(at(4), "m3", 314_000),
+				tCompact(at(5), "c1", "auto", 314_000), tAssistant(at(6), "m4", 220_000), tAssistant(at(7), "m5", 225_000)),
+			want: []string{"(stop hook): 1 of 1", "Advices no reset followed: 1 of 1", "220K tokens"},
+			row:  `compaction\s+314K\s+crossed mid-turn\s+no`,
+		},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeTranscript(t, dir, tt.lines...)
+			var out bytes.Buffer
+			args := append([]string{"-config", configWith(t, ""), "-since", "3h", "-transcripts", dir}, tt.flags...)
+			if err := runContextReport(context.Background(), args, &out); err != nil {
+				t.Fatal(err)
+			}
+			for _, want := range tt.want {
+				if !strings.Contains(out.String(), want) {
+					t.Errorf("report does not contain %q:\n%s", want, out.String())
+				}
+			}
+			if tt.row != "" && !regexp.MustCompile(tt.row).MatchString(out.String()) {
+				t.Errorf("no row %q:\n%s", tt.row, out.String())
+			}
+		})
+	}
+}
+
 func TestContextReportSplitPrintsOnePeriodEach(t *testing.T) {
 	now := time.Now()
 	configPath := configWith(t, "")

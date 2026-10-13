@@ -3,12 +3,13 @@
 `jalon context-report` checks the thresholds against your own history. It reads your Claude Code transcripts on your machine, offline, and prints a report; nothing is sent anywhere and nothing is written.
 
 ```sh
-jalon context-report [--since 7d] [--transcripts dir] [--split t1,t2] [--config path]
+jalon context-report [--since 7d] [--transcripts dir] [--split t1,t2] [--stop-hook=false] [--config path]
 ```
 
 - `--since` takes a Go duration (`90m`, `24h`) or days (`7d`); the default is 7 days.
 - `--transcripts` is the folder to read, `~/.claude/projects` by default. It reads `<folder>/<project>/<session>.jsonl` and `<folder>/<session>.jsonl`, so one project's folder, such as `~/.claude/projects/-Users-me-work-app`, works too. The command fails, naming it, when it cannot be read, names the two layouts when it finds no file, and says so when files exist but none was modified in the window.
 - `--split` takes times (`2026-10-12T09:00` or `2026-10-13`, local time) that cut the window into periods, printed one after the other, so you can compare before and after a change of thresholds.
+- `--stop-hook=false` replays the prompt hook alone, as release 0.1.0 advised, so you can compare it with the current release on the same transcripts.
 
 ## Impact
 
@@ -20,9 +21,9 @@ A handoff resume is linked to the conversation that wrote the handoff, or else t
 
 ## The simulation
 
-For each conversation, the report replays the advisor with your current thresholds, with each conversation's starting size, and compares its advice with the resets you did: your compactions and your handoffs. It replays the advice only at the turns the prompt hook acts on: a prompt you typed, in a conversation where you had typed before. A background task's report, a message from another session or a prompt sent before your first one gets none, as with the hook; a conversation a program drove alone (`claude -p`) is left out. Like the hook, it cannot tell a program's prompt from yours once you have typed in the conversation. The lead still counts every turn. The advice the stop hook gives at the end of a turn is not replayed: such a crossing shows as `crossed mid-turn`.
+For each conversation, the report replays the advisor with your current thresholds, with each conversation's starting size, and compares its advice with the resets you did: your compactions and your handoffs. It replays the advice only at the turns the prompt hook acts on: a prompt you typed, in a conversation where you had typed before. A background task's report, a message from another session or a prompt sent before your first one gets none, as with the hook; a conversation a program drove alone (`claude -p`) is left out. Like the hook, it cannot tell a program's prompt from yours once you have typed in the conversation. The lead still counts every turn. It also replays the advice the stop hook gives at the end of a turn whose prompt you typed, when the prompt hook did not advise at its start: on the size of the turn's request before its last one, the size the hook reads, since the transcript does not hold the last one yet. Such an advice counts like one at the next prompt, which then does not repeat it, and the report prints how many advices fall at the end of a turn.
 
-For each reset it prints how many turns before it the advice would have come (the lead), or `crossed mid-turn` when the context grew past the threshold inside one turn's tool loop or at a turn the hook does not act on, or `no advice`. It also prints the compactions with their size, the starting sizes, and the share of the context taken by stale tool results at each advised point.
+For each reset it prints how many turns before it the advice would have come (the lead), or `crossed mid-turn` when the context grew past the threshold where no hook would advise: at a turn's last request, at a turn no hook acts on, or inside a turn with `--stop-hook=false`; or `no advice`. It also prints the compactions with their size, the starting sizes, and the share of the context taken by stale tool results at each advised point.
 
 "Extra prompt tokens after the advice" is the sum, over the requests from the first simulated advice to the reset, of the prompt tokens above the size at that advice: roughly what resetting at the advice would have avoided reading.
 
