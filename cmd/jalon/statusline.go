@@ -16,8 +16,8 @@ import (
 )
 
 // statuslineTimeout bounds the whole command: the status line is redrawn after
-// every assistant message and must never lag.
-const statuslineTimeout = 200 * time.Millisecond
+// every assistant message and must never lag. Tests lift it, as hookTimeout.
+var statuslineTimeout = 200 * time.Millisecond
 
 // runStatusline prints the context size the client reports on stdin, behind a
 // pole whose bands fill as the context grows above the session's floor, which it

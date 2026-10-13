@@ -27,7 +27,7 @@ func contextFloor(path string) (int, bool) {
 	for {
 		line, err := r.ReadBytes('\n')
 		if bytes.Contains(line, usageMark) {
-			var e sizeEntry
+			var e tailEntry
 			if json.Unmarshal(line, &e) == nil && e.Type == "assistant" && !e.IsSidechain && e.Message.Usage != nil {
 				u := e.Message.Usage
 				if n := u.Input + u.CacheRead + u.CacheCreation; n > 0 {

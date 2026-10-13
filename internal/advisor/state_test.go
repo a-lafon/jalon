@@ -14,7 +14,7 @@ func TestRecordAndLoad(t *testing.T) {
 	if _, ok := Load(dir, "s1"); ok {
 		t.Fatal("a session with no file must not load")
 	}
-	if err := Record(dir, "s1", 120_000, t0); err != nil {
+	if err := Record(dir, "s1", 120_000, t0, false); err != nil {
 		t.Fatal(err)
 	}
 	got, ok := Load(dir, "s1")
@@ -25,7 +25,7 @@ func TestRecordAndLoad(t *testing.T) {
 
 func TestStatePermissionsAndNoLeftovers(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "sessions")
-	if err := Record(dir, "s1", 1, t0); err != nil {
+	if err := Record(dir, "s1", 1, t0, false); err != nil {
 		t.Fatal(err)
 	}
 	if err := MarkAdvised(dir, "s1", 1, t0); err != nil {
@@ -50,7 +50,7 @@ func TestUnsafeSessionIDsAreIgnored(t *testing.T) {
 		if SafeSessionID(id) {
 			t.Errorf("%q must be unsafe", id)
 		}
-		if Record(dir, id, 1, t0) == nil || MarkAdvised(dir, id, 1, t0) == nil {
+		if Record(dir, id, 1, t0, false) == nil || MarkAdvised(dir, id, 1, t0) == nil {
 			t.Errorf("%q: a write must be refused", id)
 		}
 		if _, ok := Load(dir, id); ok {
@@ -69,9 +69,9 @@ func TestUnsafeSessionIDsAreIgnored(t *testing.T) {
 
 func TestMarkAdvisedKeepsTheSizeAndRecordKeepsTheStep(t *testing.T) {
 	dir := t.TempDir()
-	Record(dir, "s", 210_000, t0)
+	Record(dir, "s", 210_000, t0, false)
 	MarkAdvised(dir, "s", 210_000, t0)
-	Record(dir, "s", 260_000, t0.Add(time.Minute))
+	Record(dir, "s", 260_000, t0.Add(time.Minute), false)
 	got, _ := Load(dir, "s")
 	if got.Size != 260_000 || got.LastAdvised != 210_000 {
 		t.Errorf("state = %+v, want size 260000 and last advised 210000", got)
@@ -80,12 +80,12 @@ func TestMarkAdvisedKeepsTheSizeAndRecordKeepsTheStep(t *testing.T) {
 
 func TestSetHandoffKeepsTheRestAndRecordKeepsTheHandoff(t *testing.T) {
 	dir := t.TempDir()
-	Record(dir, "s", 210_000, t0)
+	Record(dir, "s", 210_000, t0, false)
 	MarkAdvised(dir, "s", 210_000, t0)
 	if err := SetHandoff(dir, "s", "p.md", "r4sefxw4", "2026-10-12-0900-r4sefxw4"); err != nil {
 		t.Fatal(err)
 	}
-	Record(dir, "s", 260_000, t0.Add(time.Minute))
+	Record(dir, "s", 260_000, t0.Add(time.Minute), false)
 	got, _ := Load(dir, "s")
 	want := Session{Size: 260_000, Recorded: t0.Add(time.Minute), LastAdvised: 210_000,
 		Parent: "p.md", Thread: "r4sefxw4", Proposed: "2026-10-12-0900-r4sefxw4"}
@@ -99,7 +99,7 @@ func TestSetHandoffKeepsTheRestAndRecordKeepsTheHandoff(t *testing.T) {
 
 func TestStateWithoutHandoffHasNoHandoffFields(t *testing.T) {
 	dir := t.TempDir()
-	Record(dir, "s", 210_000, t0)
+	Record(dir, "s", 210_000, t0, false)
 	MarkAdvised(dir, "s", 210_000, t0)
 	b, _ := os.ReadFile(filepath.Join(dir, "s.json"))
 	if want := `{"size":210000,"recorded":"2026-10-12T09:00:00Z","last_advised":210000}`; string(b) != want {
@@ -107,15 +107,29 @@ func TestStateWithoutHandoffHasNoHandoffFields(t *testing.T) {
 	}
 }
 
+func TestTypedIsRecordedOnce(t *testing.T) {
+	dir := t.TempDir()
+	Record(dir, "s", 100_000, t0, false)
+	if got, _ := Load(dir, "s"); got.Typed {
+		t.Error("a session no typed prompt showed in is typed")
+	}
+	Record(dir, "s", 110_000, t0, true)
+	Record(dir, "s", 120_000, t0, false)
+	MarkAdvised(dir, "s", 120_000, t0)
+	if got, _ := Load(dir, "s"); !got.Typed {
+		t.Error("the session lost its typed prompt")
+	}
+}
+
 func TestStepResetsWhenTheSizeFallsUnderHalf(t *testing.T) {
 	dir := t.TempDir()
-	Record(dir, "s", 320_000, t0)
+	Record(dir, "s", 320_000, t0, false)
 	MarkAdvised(dir, "s", 320_000, t0)
-	Record(dir, "s", 160_000, t0) // exactly half: not a reset
+	Record(dir, "s", 160_000, t0, false) // exactly half: not a reset
 	if got, _ := Load(dir, "s"); got.LastAdvised != 320_000 {
 		t.Errorf("at half: last advised = %d, want it kept", got.LastAdvised)
 	}
-	Record(dir, "s", 18_000, t0)
+	Record(dir, "s", 18_000, t0, false)
 	if got, _ := Load(dir, "s"); got.Size != 18_000 || got.LastAdvised != 0 {
 		t.Errorf("after compaction: %+v", got)
 	}
@@ -123,8 +137,8 @@ func TestStepResetsWhenTheSizeFallsUnderHalf(t *testing.T) {
 
 func TestSweepDeletesOnlyOldStateFiles(t *testing.T) {
 	dir := t.TempDir()
-	Record(dir, "old", 1, t0.Add(-8*24*time.Hour))
-	Record(dir, "fresh", 1, t0.Add(-6*24*time.Hour))
+	Record(dir, "old", 1, t0.Add(-8*24*time.Hour), false)
+	Record(dir, "fresh", 1, t0.Add(-6*24*time.Hour), false)
 	os.WriteFile(filepath.Join(dir, "corrupt.json"), []byte("{"), 0o600)
 	os.Chtimes(filepath.Join(dir, "corrupt.json"), t0.Add(-9*24*time.Hour), t0.Add(-9*24*time.Hour))
 	os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("keep"), 0o600)
