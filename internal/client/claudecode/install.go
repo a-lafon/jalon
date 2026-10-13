@@ -26,10 +26,17 @@ func (Adapter) SettingsPath() (string, error) {
 	return filepath.Join(home, ".claude", "settings.json"), nil
 }
 
-var (
-	hookWords       = []string{"hook", "prompt"}
-	statusLineWords = []string{"statusline"}
-)
+var statusLineWords = []string{"statusline"}
+
+// hookKinds are Jalon's hooks: the settings event each runs on, its name in
+// the actions, and the words that follow the executable in its command.
+var hookKinds = []struct {
+	event, name string
+	words       []string
+}{
+	{"UserPromptSubmit", "prompt hook", []string{"hook", "prompt"}},
+	{"Stop", "stop hook", []string{"hook", "stop"}},
+}
 
 func (Adapter) Install(settings []byte, exe string, display client.Display) ([]byte, []string, error) {
 	root, err := parseObject(settings)
@@ -40,28 +47,32 @@ func (Adapter) Install(settings []byte, exe string, display client.Display) ([]b
 		return nil, nil, err
 	}
 	var actions []string
-	hookCmd := quoteExe(exe) + " hook prompt --client claude-code"
-	found, changed, err := editPromptHooks(&root, func(cmd string) (string, bool) {
-		next := withExe(cmd, exe)
-		if next != cmd {
-			actions = append(actions, fmt.Sprintf("prompt hook: updated %s -> %s", cmd, next))
-		}
-		return next, true
-	})
-	if err != nil {
-		return nil, nil, err
-	}
-	switch {
-	case found == 0:
-		if err := appendPromptHook(&root, hookCmd); err != nil {
+	changed := false
+	for _, k := range hookKinds {
+		hookCmd := quoteExe(exe) + " " + strings.Join(k.words, " ") + " --client claude-code"
+		found, edited, err := editHooks(&root, k.event, k.words, func(cmd string) (string, bool) {
+			next := withExe(cmd, exe)
+			if next != cmd {
+				actions = append(actions, fmt.Sprintf("%s: updated %s -> %s", k.name, cmd, next))
+			}
+			return next, true
+		})
+		if err != nil {
 			return nil, nil, err
 		}
-		changed = true
-		actions = append(actions, "prompt hook: added "+hookCmd)
-	case found > 1:
-		actions = append(actions, fmt.Sprintf("prompt hook: %d Jalon entries, each one gives the advice: remove the extra ones by hand", found))
-	case !changed:
-		actions = append(actions, "prompt hook: already installed")
+		changed = changed || edited
+		switch {
+		case found == 0:
+			if err := appendHook(&root, k.event, hookCmd); err != nil {
+				return nil, nil, err
+			}
+			changed = true
+			actions = append(actions, k.name+": added "+hookCmd)
+		case found > 1:
+			actions = append(actions, fmt.Sprintf("%s: %d Jalon entries, each one runs: remove the extra ones by hand", k.name, found))
+		case !edited:
+			actions = append(actions, k.name+": already installed")
+		}
 	}
 
 	switch display {
@@ -112,15 +123,19 @@ func (Adapter) Uninstall(settings []byte) ([]byte, []string, error) {
 		return nil, nil, err
 	}
 	var actions []string
-	found, changed, err := editPromptHooks(&root, func(cmd string) (string, bool) {
-		actions = append(actions, "prompt hook: removed "+cmd)
-		return "", false
-	})
-	if err != nil {
-		return nil, nil, err
-	}
-	if found == 0 {
-		actions = append(actions, "prompt hook: not installed")
+	changed := false
+	for _, k := range hookKinds {
+		found, edited, err := editHooks(&root, k.event, k.words, func(cmd string) (string, bool) {
+			actions = append(actions, k.name+": removed "+cmd)
+			return "", false
+		})
+		if err != nil {
+			return nil, nil, err
+		}
+		changed = changed || edited
+		if found == 0 {
+			actions = append(actions, k.name+": not installed")
+		}
 	}
 	if raw, ok := root.get("statusLine"); ok {
 		if sl, err := parseObject(raw); err == nil && isJalon(sl.str("command"), statusLineWords) {
@@ -151,11 +166,11 @@ func removeStatusLine(root *object) bool {
 	return true
 }
 
-// editPromptHooks calls edit for each Jalon hook of hooks.UserPromptSubmit,
-// which returns the hook's new command, or false to drop the hook. Groups,
-// arrays and the hooks object that dropping leaves empty are removed. Only the
-// objects that change are rebuilt.
-func editPromptHooks(root *object, edit func(cmd string) (string, bool)) (found int, changed bool, err error) {
+// editHooks calls edit for each Jalon hook of hooks.<event> whose command
+// runs words, which returns the hook's new command, or false to drop the hook.
+// Groups, arrays and the hooks object that dropping leaves empty are removed.
+// Only the objects that change are rebuilt.
+func editHooks(root *object, event string, words []string, edit func(cmd string) (string, bool)) (found int, changed bool, err error) {
 	hooksRaw, ok := root.get("hooks")
 	if !ok {
 		return 0, false, nil
@@ -164,24 +179,24 @@ func editPromptHooks(root *object, edit func(cmd string) (string, bool)) (found 
 	if err != nil {
 		return 0, false, fmt.Errorf("hooks: %w", err)
 	}
-	groupsRaw, ok := hooks.get("UserPromptSubmit")
+	groupsRaw, ok := hooks.get(event)
 	if !ok {
 		return 0, false, nil
 	}
 	var groups []json.RawMessage
 	if err := json.Unmarshal(groupsRaw, &groups); err != nil {
-		return 0, false, fmt.Errorf("hooks.UserPromptSubmit: %w", err)
+		return 0, false, fmt.Errorf("hooks.%s: %w", event, err)
 	}
 	keptGroups := groups[:0:0]
 	for _, g := range groups {
 		group, err := parseObject(g)
 		if err != nil {
-			return 0, false, fmt.Errorf("hooks.UserPromptSubmit: %w", err)
+			return 0, false, fmt.Errorf("hooks.%s: %w", event, err)
 		}
 		var list []json.RawMessage
 		if raw, ok := group.get("hooks"); ok {
 			if err := json.Unmarshal(raw, &list); err != nil {
-				return 0, false, fmt.Errorf("hooks.UserPromptSubmit: %w", err)
+				return 0, false, fmt.Errorf("hooks.%s: %w", event, err)
 			}
 		}
 		groupChanged := false
@@ -189,10 +204,10 @@ func editPromptHooks(root *object, edit func(cmd string) (string, bool)) (found 
 		for _, h := range list {
 			hook, err := parseObject(h)
 			if err != nil {
-				return 0, false, fmt.Errorf("hooks.UserPromptSubmit: %w", err)
+				return 0, false, fmt.Errorf("hooks.%s: %w", event, err)
 			}
 			cmd := hook.str("command")
-			if !isJalon(cmd, hookWords) {
+			if !isJalon(cmd, words) {
 				kept = append(kept, h)
 				continue
 			}
@@ -224,9 +239,9 @@ func editPromptHooks(root *object, edit func(cmd string) (string, bool)) (found 
 		return found, false, nil
 	}
 	if len(keptGroups) == 0 {
-		hooks.remove("UserPromptSubmit")
+		hooks.remove(event)
 	} else {
-		hooks.set("UserPromptSubmit", marshalArray(keptGroups))
+		hooks.set(event, marshalArray(keptGroups))
 	}
 	if len(hooks) == 0 {
 		root.remove("hooks")
@@ -236,8 +251,8 @@ func editPromptHooks(root *object, edit func(cmd string) (string, bool)) (found 
 	return found, true, nil
 }
 
-// appendPromptHook adds a group running cmd after the existing ones.
-func appendPromptHook(root *object, cmd string) error {
+// appendHook adds a group running cmd after the existing ones of hooks.<event>.
+func appendHook(root *object, event, cmd string) error {
 	hooks := object{}
 	if raw, ok := root.get("hooks"); ok {
 		var err error
@@ -246,13 +261,13 @@ func appendPromptHook(root *object, cmd string) error {
 		}
 	}
 	var groups []json.RawMessage
-	if raw, ok := hooks.get("UserPromptSubmit"); ok {
+	if raw, ok := hooks.get(event); ok {
 		if err := json.Unmarshal(raw, &groups); err != nil {
-			return fmt.Errorf("hooks.UserPromptSubmit: %w", err)
+			return fmt.Errorf("hooks.%s: %w", event, err)
 		}
 	}
 	groups = append(groups, json.RawMessage(`{"hooks":[{"type":"command","command":`+jsonString(cmd)+`,"timeout":2}]}`))
-	hooks.set("UserPromptSubmit", marshalArray(groups))
+	hooks.set(event, marshalArray(groups))
 	root.set("hooks", hooks.marshal())
 	return nil
 }

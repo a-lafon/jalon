@@ -31,13 +31,14 @@ var readAt = (*os.File).ReadAt
 // With typed, Typed is whether the same part of the transcript holds a user
 // entry, not a sidechain, whose origin kind is "human": Claude Code writes it on
 // a typed prompt, and none on a claude -p prompt, a tool result or a meta
-// message. A session a program drives has none, so looking for it reads the
-// whole 8 MB: the hooks ask for it only when they are about to advise.
+// message. With a promptID, only the entry of that prompt counts. A session a
+// program drives has none, so looking for it reads the whole 8 MB: the hooks
+// ask for it only when they are about to advise.
 //
 // Lines that cannot be parsed, including the partial first line of a read, are
 // skipped. It reads the last 1 MB, then up to 8 MB until it finds what it looks
 // for.
-func readTail(path string, typed bool) client.Tail {
+func readTail(path, promptID string, typed bool) client.Tail {
 	f, err := os.Open(path)
 	if err != nil {
 		return client.Tail{}
@@ -62,7 +63,7 @@ func readTail(path string, typed bool) client.Tail {
 				buf = nil
 			}
 		}
-		tail, sized := scanTail(buf, typed)
+		tail, sized := scanTail(buf, promptID, typed)
 		if sized && (!typed || tail.Typed) || start == 0 || window >= tailMax {
 			return tail
 		}
@@ -73,6 +74,7 @@ type tailEntry struct {
 	Type        string `json:"type"`
 	Subtype     string `json:"subtype"`
 	IsSidechain bool   `json:"isSidechain"`
+	PromptID    string `json:"promptId"`
 	Origin      struct {
 		Kind string `json:"kind"`
 	} `json:"origin"`
@@ -97,7 +99,7 @@ var (
 // scanTail scans the lines of buf from the end, until the size and, with typed,
 // a typed prompt are found. sized is true when an entry decided the size, even
 // to say there is none.
-func scanTail(buf []byte, typed bool) (tail client.Tail, sized bool) {
+func scanTail(buf []byte, promptID string, typed bool) (tail client.Tail, sized bool) {
 	for end := len(buf); end > 0 && (!sized || typed && !tail.Typed); {
 		start := bytes.LastIndexByte(buf[:end], '\n') + 1
 		line := buf[start:end]
@@ -114,7 +116,7 @@ func scanTail(buf []byte, typed bool) (tail client.Tail, sized bool) {
 		}
 		switch {
 		case lookTyped && e.Type == "user" && !e.IsSidechain && e.Origin.Kind == "human":
-			tail.Typed = true
+			tail.Typed = promptID == "" || e.PromptID == promptID
 		case !lookSize:
 		case e.Type == "system" && e.Subtype == "compact_boundary":
 			sized = true
