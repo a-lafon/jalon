@@ -91,6 +91,10 @@ type Turn struct {
 	// Request is the index in Requests of the first request that answered it,
 	// that is the number of requests made before it.
 	Request int
+	// Advisable is set when the prompt hook would act on the prompt: the hook
+	// takes it for typed, and a person typed a prompt earlier in the
+	// conversation, since the hook runs before its prompt reaches the transcript.
+	Advisable bool
 }
 
 // Request is one assistant API request.
@@ -158,7 +162,11 @@ var ignoredTypes = map[string]bool{
 // Reader reads transcript files and deduplicates compactions across them.
 type Reader struct {
 	Coverage Coverage
-	seen     map[string]bool
+	// Typed is the prompt hook's own test of a prompt's text, set by the caller
+	// so this package does not depend on the client adapter. Nil takes every
+	// prompt for typed.
+	Typed func(prompt string) bool
+	seen  map[string]bool
 }
 
 // NewReader returns a Reader with empty coverage.
@@ -354,7 +362,8 @@ func (r *Reader) add(conv *Conversation, pending **Turn, lastMessageID *string, 
 			}
 			block.ToolResult = hasResult
 			if hasText && !hasResult && !e.IsMeta && !e.IsCompactSummary {
-				*pending = &Turn{Time: ts, Block: len(conv.Blocks)}
+				*pending = &Turn{Time: ts, Block: len(conv.Blocks),
+					Advisable: conv.Human > 0 && (r.Typed == nil || r.Typed(promptText(m.Content)))}
 				if e.Origin != nil && e.Origin.Kind == "human" {
 					if conv.Human == 0 {
 						conv.Resume = resumeOf(m.Content, ts, len(conv.Turns), len(conv.Requests))
@@ -413,6 +422,18 @@ func isAdvice(e entry) bool {
 // resumeOf is the resume a prompt holds, nil when it names no handoff file by
 // an absolute path. The last path named wins.
 func resumeOf(raw json.RawMessage, at time.Time, turn, request int) *Resume {
+	var res *Resume
+	for _, m := range handoff.Mentions(promptText(raw)) {
+		if p := m.Path(); p != "" {
+			res = &Resume{Path: p, Time: at, Turn: turn, Request: request}
+		}
+	}
+	return res
+}
+
+// promptText is the text of a prompt's content: a string, or its text blocks,
+// "" when it is neither.
+func promptText(raw json.RawMessage) string {
 	var text string
 	if json.Unmarshal(raw, &text) != nil {
 		var blocks []struct {
@@ -420,7 +441,7 @@ func resumeOf(raw json.RawMessage, at time.Time, turn, request int) *Resume {
 			Text string `json:"text"`
 		}
 		if json.Unmarshal(raw, &blocks) != nil {
-			return nil
+			return ""
 		}
 		for _, b := range blocks {
 			if b.Type == "text" {
@@ -428,13 +449,7 @@ func resumeOf(raw json.RawMessage, at time.Time, turn, request int) *Resume {
 			}
 		}
 	}
-	var res *Resume
-	for _, m := range handoff.Mentions(text) {
-		if p := m.Path(); p != "" {
-			res = &Resume{Path: p, Time: at, Turn: turn, Request: request}
-		}
-	}
-	return res
+	return text
 }
 
 // handoffWrites are the Write tool uses on a handoff file in the content of an

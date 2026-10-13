@@ -55,8 +55,9 @@ type SimReset struct {
 	// previous reset, as the transcript records it.
 	AdviceGiven bool
 	// CrossedMidTurn is set when it never fired although a request went over the
-	// threshold: the context grew past it inside one turn's tool loop, and the
-	// user reset before the next turn started.
+	// threshold: the context grew past it inside one turn's tool loop, or at a
+	// turn the prompt hook does not act on, and the user reset before the next
+	// turn it acts on.
 	CrossedMidTurn bool
 	// Lead is the number of user turns started between the first advice and the
 	// reset.
@@ -115,7 +116,9 @@ func (f Floor) sumRequests(in func(time.Time) bool) Floor {
 	return f
 }
 
-// Simulate runs the advisor on the user turns of each conversation.
+// Simulate runs the advisor on the user turns of each conversation that the
+// prompt hook would act on: prompts a person typed, in a conversation a person
+// typed in before.
 func Simulate(convs []transcript.Conversation, p Params) Result {
 	var res Result
 	// A handoff resumed more than once from the same conversation is one reset.
@@ -213,6 +216,9 @@ func simulateOne(res *Result, c transcript.Conversation, cuts []cut, p Params) {
 			segBlock, segReq = t.Block, t.Request
 		}
 		prev = t.PromptTokens
+		if !t.Advisable {
+			continue
+		}
 		a, ns := advisor.Advise(st, t.PromptTokens, floor, p.Advisor)
 		st = ns
 		if a.Kind != advisor.Reset {
