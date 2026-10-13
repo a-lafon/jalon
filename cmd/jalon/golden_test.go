@@ -128,6 +128,8 @@ func TestGoldenStopHook(t *testing.T) {
 	}{
 		// Advised at the prompt, the reply lacks the section.
 		"reminder": {[]string{typedPrompt("p0"), assistantLine(startSize), assistantLine(274_000)}, []string{assistantLine(280_000)}, "Le fichier de reprise est écrit."},
+		// Below the threshold at the prompt, past it at the end of the turn.
+		"crossing": {[]string{typedPrompt("p0"), assistantLine(startSize), assistantLine(150_000)}, []string{assistantLine(296_000)}, "Done."},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {

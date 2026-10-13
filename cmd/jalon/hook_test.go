@@ -1032,7 +1032,7 @@ func runPromptAt(t *testing.T, configPath, stdin string, now time.Time) string {
 func runStop(t *testing.T, configPath, stdin string) string {
 	t.Helper()
 	var out bytes.Buffer
-	if err := runStopHook(context.Background(), []string{"-config", configPath}, strings.NewReader(stdin), &out); err != nil {
+	if err := runStopHook(context.Background(), []string{"-config", configPath}, strings.NewReader(stdin), &out, hookNow); err != nil {
 		t.Fatalf("stop hook: %v", err)
 	}
 	return out.String()
@@ -1179,6 +1179,80 @@ func TestStopHookNoReminderAfterACompaction(t *testing.T) {
 	}
 }
 
+func TestStopHookCrossedDuringTheTurn(t *testing.T) {
+	dir := useHome(t)
+	cfg := configWith(t, "context:\n  advise_tokens: 200000\n  advise_step_tokens: 150000\n")
+	repo := gitRepo(t)
+	appendTranscript(t, "s1", typedPrompt("p1"), assistantLine(67_000), assistantLine(150_000))
+	if got := runPrompt(t, cfg, promptInput("s1", "p2", repo)); got != "" {
+		t.Fatalf("prompt hook output = %q, want nothing", got)
+	}
+	appendTranscript(t, "s1", typedPrompt("p2"), assistantLine(296_000))
+	out := parseStop(t, runStop(t, cfg, stopInput("s1", "p2", repo, "Done.", false)))
+	if !strings.HasPrefix(out.Reason, "Jalon: context at 296K tokens.") ||
+		!strings.Contains(out.Reason, "do not repeat it") ||
+		!strings.Contains(out.Reason, "Add, as your last message, a short section written as a Markdown blockquote") ||
+		!regexp.MustCompile(`Write `+regexp.QuoteMeta(repo)+`/\.jalon/handoffs/2026-10-12/0900-[0-9a-z]{8}-<short-slug>\.md`).MatchString(out.Reason) ||
+		strings.Contains(out.Reason, "{") {
+		t.Errorf("reason = %q", out.Reason)
+	}
+	if out.SystemMessage == nil || *out.SystemMessage != "Jalon: context at 296K tokens, a reset proposal follows." {
+		t.Errorf("systemMessage = %v", out.SystemMessage)
+	}
+	if st, _ := advisor.Load(dir, "s1"); st.LastAdvised != 296_000 || st.AdvisedPrompt != "p2" || st.Prompt != "p2" {
+		t.Errorf("state = %+v, want last advised 296000 at prompt p2", st)
+	}
+	if _, err := os.Stat(filepath.Join(repo, ".jalon", "handoffs", "2026-10-12")); err != nil {
+		t.Errorf("day folder: %v", err)
+	}
+
+	// The model added the section: the stop hook runs again, already active.
+	if got := runStop(t, cfg, stopInput("s1", "p2", repo, "> **Jalon** — …", true)); got != "" {
+		t.Errorf("second stop output = %q, want nothing", got)
+	}
+	// The next prompt does not repeat the advice.
+	appendTranscript(t, "s1", typedPrompt("p3"), assistantLine(301_000))
+	if got := runPrompt(t, cfg, promptInput("s1", "p3", repo)); got != "" {
+		t.Errorf("next prompt output = %q, want nothing", got)
+	}
+}
+
+func TestStopHookFirstTurnCrossesTheThreshold(t *testing.T) {
+	dir := useHome(t)
+	cfg := configWith(t, thresholdsConfig)
+	repo := gitRepo(t)
+	// The session's first prompt: the transcript holds no size yet.
+	if got := runPrompt(t, cfg, promptInput("s1", "p1", repo)); got != "" {
+		t.Fatalf("prompt hook output = %q, want nothing", got)
+	}
+	appendTranscript(t, "s1", typedPrompt("p1"), assistantLine(25_000), assistantLine(210_000))
+	out := parseStop(t, runStop(t, cfg, stopInput("s1", "p1", repo, "Done.", false)))
+	if !strings.HasPrefix(out.Reason, "Jalon: context at 210K tokens.") {
+		t.Errorf("reason = %q", out.Reason)
+	}
+	// The floor is read at Stop, from the turn's first request.
+	if st, _ := advisor.Load(dir, "s1"); st.Floor != 25_000 || st.LastAdvised != 210_000 || st.AdvisedPrompt != "p1" {
+		t.Errorf("state = %+v, want floor 25000, last advised 210000 at prompt p1", st)
+	}
+}
+
+func TestStopHookBelowTheThresholdWritesOnlyTheState(t *testing.T) {
+	dir, cfg := hookState(t, "s1", 100_000)
+	repo := gitRepo(t)
+	runPrompt(t, cfg, promptInput("s1", "p3", repo))
+	appendTranscript(t, "s1", typedPrompt("p3"), assistantLine(120_000))
+	home := os.Getenv("HOME")
+	homeBefore, repoBefore := tree(t, home), tree(t, repo)
+	if got := runStop(t, cfg, stopInput("s1", "p3", repo, "Done.", false)); got != "" {
+		t.Errorf("output = %q, want nothing", got)
+	}
+	if st, _ := advisor.Load(dir, "s1"); st.Size != 120_000 || st.Prompt != "p3" {
+		t.Errorf("state = %+v, want size 120000 recorded for p3", st)
+	}
+	expectFiles(t, "the stop hook in the home", created(t, home, homeBefore))
+	expectFiles(t, "the stop hook in the project", created(t, repo, repoBefore))
+}
+
 func TestStopHookDoesNothing(t *testing.T) {
 	off := "context:\n  enabled: false\n  advise_tokens: 200000\n  advise_step_tokens: 150000\n"
 	tests := map[string]struct {
@@ -1227,13 +1301,13 @@ func TestStopHookUnknownClientIsSilentAndSaysWhy(t *testing.T) {
 	defer func() { stderr = old }()
 	var out bytes.Buffer
 	args := []string{"-client", "nope", "-config", cfg}
-	if err := runStopHook(context.Background(), args, strings.NewReader(stopInput("s1", "p1", t.TempDir(), "", false)), &out); err != nil || out.Len() != 0 {
+	if err := runStopHook(context.Background(), args, strings.NewReader(stopInput("s1", "p1", t.TempDir(), "", false)), &out, hookNow); err != nil || out.Len() != 0 {
 		t.Errorf("err=%v output=%q, want silence", err, out.String())
 	}
 	if !strings.Contains(errBuf.String(), `unknown client "nope"`) || !strings.Contains(errBuf.String(), "claude-code") {
 		t.Errorf("stderr = %q", errBuf.String())
 	}
-	if err := runStopHook(context.Background(), []string{"-bogus"}, strings.NewReader(""), &out); err == nil {
+	if err := runStopHook(context.Background(), []string{"-bogus"}, strings.NewReader(""), &out, hookNow); err == nil {
 		t.Error("an invalid flag must be an error, for exit 1")
 	}
 }
@@ -1295,9 +1369,33 @@ func TestProgramsAreNeverAdvised(t *testing.T) {
 		}
 	})
 
-	// A program resumes a session a person typed in: the prompt hook advises,
-	// and the program's turn must still end on its own last message.
 	t.Run("turn started by a program", func(t *testing.T) {
+		_, cfg := hookState(t, "s1", 100_000)
+		repo := gitRepo(t)
+		runPrompt(t, cfg, promptInput("s1", "p6", repo))
+		appendTranscript(t, "s1", programPrompt("p6"), assistantLine(400_000))
+		if got := runStop(t, cfg, stopInput("s1", "p6", repo, "The task's output.", false)); got != "" {
+			t.Errorf("output = %q, want nothing: the program's output is the last message", got)
+		}
+		assertNoAdvice(t, repo, "p6")
+	})
+
+	t.Run("prompt entry out of reach", func(t *testing.T) {
+		_, cfg := hookState(t, "s1", 100_000)
+		repo := gitRepo(t)
+		runPrompt(t, cfg, promptInput("s1", "p1", repo))
+		// The transcript holds no entry for p1, only the earlier typed p0.
+		appendTranscript(t, "s1", assistantLine(400_000))
+		if got := runStop(t, cfg, stopInput("s1", "p1", repo, "Done.", false)); got != "" {
+			t.Errorf("output = %q, want nothing", got)
+		}
+		assertNoAdvice(t, repo, "p1")
+	})
+
+	// The reminder path: a program resumes a session a person typed in, the
+	// prompt hook advises, and the program's turn must still end on its own
+	// last message.
+	t.Run("reminder, turn started by a program", func(t *testing.T) {
 		_, cfg := hookState(t, "s1", 210_000)
 		repo := gitRepo(t)
 		if runPrompt(t, cfg, promptInput("s1", "p6", repo)) == "" {
@@ -1309,7 +1407,7 @@ func TestProgramsAreNeverAdvised(t *testing.T) {
 		}
 	})
 
-	t.Run("prompt entry out of reach", func(t *testing.T) {
+	t.Run("reminder, prompt entry out of reach", func(t *testing.T) {
 		_, cfg := hookState(t, "s1", 210_000)
 		repo := gitRepo(t)
 		if runPrompt(t, cfg, promptInput("s1", "p1", repo)) == "" {
@@ -1321,4 +1419,18 @@ func TestProgramsAreNeverAdvised(t *testing.T) {
 			t.Errorf("output = %q, want nothing", got)
 		}
 	})
+}
+
+// assertNoAdvice fails when session s1's state records an advice, or when the
+// handoff folder was created in repo. The stop hook may record the size: it
+// looks for the typed prompt only once a reset is due.
+func assertNoAdvice(t *testing.T, repo, prompt string) {
+	t.Helper()
+	st, _ := advisor.Load(filepath.Join(os.Getenv("HOME"), ".jalon", "sessions"), "s1")
+	if st.LastAdvised != 0 || st.AdvisedPrompt == prompt || st.Proposed != "" {
+		t.Errorf("state = %+v, want no advice", st)
+	}
+	if _, err := os.Stat(filepath.Join(repo, ".jalon")); err == nil {
+		t.Error("the handoff folder was created")
+	}
 }

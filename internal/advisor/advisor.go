@@ -14,8 +14,9 @@ const (
 // ReasonSize is the reason of an advice given because the prompt is large.
 const ReasonSize = "size"
 
-// MessagePrefix starts the message the prompt hook shows when it advises a
-// reset. The context report finds the advice given in the transcripts by it.
+// MessagePrefix starts the message the prompt hook shows, and the reason the
+// stop hook blocks with, when they advise a reset. The context report finds the
+// advice given in the transcripts by it.
 const MessagePrefix = "Jalon: context at "
 
 // Config holds the thresholds, in prompt tokens.
