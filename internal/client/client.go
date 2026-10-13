@@ -76,6 +76,10 @@ type Adapter interface {
 	Name() string
 	// ReadPrompt parses the client's prompt hook input.
 	ReadPrompt(stdin []byte) (Prompt, error)
+	// IsTyped tells a prompt a person typed from one a program or a notice
+	// sent, by its text, as ReadPrompt sets Prompt.Human; the context report
+	// replays the hook with it.
+	IsTyped(prompt string) bool
 	// ReadTail reads the end of the conversation of p once: the context size,
 	// and with typed, whether a prompt typed by a person shows, the one with ID
 	// promptID when it is not "". Looking for a typed prompt can read much

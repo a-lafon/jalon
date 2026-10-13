@@ -20,7 +20,9 @@ A handoff resume is linked to the conversation that wrote the handoff, or else t
 
 ## The simulation
 
-For each conversation, the report replays the advisor with your current thresholds, with each conversation's starting size, and compares its advice with the resets you did: your compactions and your handoffs. For each reset it prints how many turns before it the advice would have come (the lead), or `crossed mid-turn` when the context grew past the threshold inside one turn's tool loop, or `no advice`. It also prints the compactions with their size, the starting sizes, and the share of the context taken by stale tool results at each advised point.
+For each conversation, the report replays the advisor with your current thresholds, with each conversation's starting size, and compares its advice with the resets you did: your compactions and your handoffs. It replays the advice only at the turns the prompt hook acts on: a prompt you typed, in a conversation where you had typed before. A background task's report, a message from another session or a prompt sent before your first one gets none, as with the hook; a conversation a program drove alone (`claude -p`) is left out. Like the hook, it cannot tell a program's prompt from yours once you have typed in the conversation. The lead still counts every turn. The advice the stop hook gives at the end of a turn is not replayed: such a crossing shows as `crossed mid-turn`.
+
+For each reset it prints how many turns before it the advice would have come (the lead), or `crossed mid-turn` when the context grew past the threshold inside one turn's tool loop or at a turn the hook does not act on, or `no advice`. It also prints the compactions with their size, the starting sizes, and the share of the context taken by stale tool results at each advised point.
 
 "Extra prompt tokens after the advice" is the sum, over the requests from the first simulated advice to the reset, of the prompt tokens above the size at that advice: roughly what resetting at the advice would have avoided reading.
 

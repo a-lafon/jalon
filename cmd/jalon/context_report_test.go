@@ -94,6 +94,85 @@ func TestContextReportComparesAdviceWithTheClientCompactions(t *testing.T) {
 	}
 }
 
+// tNotice is a prompt Claude Code sends itself: a background task's report.
+func tNotice(at time.Time) string {
+	return fmt.Sprintf(`{"type":"user","uuid":"n%d","timestamp":%q,"origin":{"kind":"task-notification"},"message":{"content":"<task-notification> <task-id>b1</task-id> done"}}`, at.UnixNano(), ts(at))
+}
+
+// tPeer is a message from another session.
+func tPeer(at time.Time) string {
+	return fmt.Sprintf(`{"type":"user","uuid":"p%d","timestamp":%q,"origin":{"kind":"peer"},"message":{"content":[{"type":"text","text":"Another Claude session sent a message: done"}]}}`, at.UnixNano(), ts(at))
+}
+
+func TestContextReportReplaysOnlyTheTurnsTheHookActsOn(t *testing.T) {
+	now := time.Now()
+	at := func(m int) time.Time { return now.Add(-time.Duration(120-m) * time.Minute) }
+	// Each conversation starts at 10K: 210K and more is 200K above its floor.
+	tests := map[string]struct {
+		lines []string
+		want  []string
+		row   string // a row of the simulated resets, when set
+	}{
+		"typed prompts": {
+			lines: []string{tUser(at(0)), tAssistant(at(1), "m1", 10_000), tUser(at(2)), tAssistant(at(3), "m2", 230_000)},
+			want:  []string{"Advices no reset followed: 1 of 1", "230K tokens"},
+		},
+		// Before: advised at the notice, one turn before the compaction.
+		"task notification crosses": {
+			lines: []string{tUser(at(0)), tAssistant(at(1), "m1", 10_000), tUser(at(2)), tAssistant(at(3), "m2", 100_000),
+				tNotice(at(4)), tAssistant(at(5), "m3", 215_000), tUser(at(6)), tAssistant(at(7), "m4", 220_000),
+				tCompact(at(8), "c1", "manual", 225_000)},
+			want: []string{"Advices no reset followed: 0 of 1"},
+			row:  `compaction\s+225K\s+0 turns\s+0K\s+no`,
+		},
+		// Before: 1 of 1.
+		"peer message crosses": {
+			lines: []string{tUser(at(0)), tAssistant(at(1), "m1", 10_000), tPeer(at(2)), tAssistant(at(3), "m2", 230_000)},
+			want:  []string{"Advices no reset followed: 0 of 0"},
+		},
+		// The compaction follows no turn the hook acts on: the threshold was crossed at the notice.
+		"crossed at a notice only": {
+			lines: []string{tUser(at(0)), tAssistant(at(1), "m1", 10_000), tNotice(at(2)), tAssistant(at(3), "m2", 230_000),
+				tCompact(at(4), "c1", "manual", 230_000)},
+			want: []string{"Advices no reset followed: 0 of 0"},
+			row:  `compaction\s+230K\s+crossed mid-turn\s+no`,
+		},
+		"claude -p session": {
+			lines: []string{tScripted(at(0)), tAssistant(at(1), "m1", 10_000), tScripted(at(2)), tAssistant(at(3), "m2", 250_000)},
+			want:  []string{"1 of 1 conversations left out of the simulation", "Advices no reset followed: 0 of 0"},
+		},
+		// The hook advises from the prompt after the first typed one. Before: at 230K.
+		"program prompts before the first typed one": {
+			lines: []string{tScripted(at(0)), tAssistant(at(1), "m1", 10_000), tScripted(at(2)), tAssistant(at(3), "m2", 230_000),
+				tUser(at(4)), tAssistant(at(5), "m3", 235_000), tUser(at(6)), tAssistant(at(7), "m4", 240_000)},
+			want: []string{"Advices no reset followed: 1 of 1", "240K tokens"},
+		},
+		// Once a person typed, the hook cannot tell a program's prompt from a typed one.
+		"program prompt after a typed one": {
+			lines: []string{tUser(at(0)), tAssistant(at(1), "m1", 10_000), tScripted(at(2)), tAssistant(at(3), "m2", 230_000)},
+			want:  []string{"Advices no reset followed: 1 of 1", "230K tokens"},
+		},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeTranscript(t, dir, tt.lines...)
+			var out bytes.Buffer
+			if err := runContextReport(context.Background(), []string{"-config", configWith(t, ""), "-since", "3h", "-transcripts", dir}, &out); err != nil {
+				t.Fatal(err)
+			}
+			for _, want := range tt.want {
+				if !strings.Contains(out.String(), want) {
+					t.Errorf("report does not contain %q:\n%s", want, out.String())
+				}
+			}
+			if tt.row != "" && !regexp.MustCompile(tt.row).MatchString(out.String()) {
+				t.Errorf("no row %q:\n%s", tt.row, out.String())
+			}
+		})
+	}
+}
+
 func TestContextReportSplitPrintsOnePeriodEach(t *testing.T) {
 	now := time.Now()
 	configPath := configWith(t, "")
