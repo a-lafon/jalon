@@ -81,7 +81,7 @@ func (Adapter) Install(settings []byte, exe string, display client.Display) ([]b
 			changed = true
 			actions = append(actions, "status line: removed, the mod draws the pole")
 		}
-	case client.StatusLine, client.NoDisplay:
+	case client.StatusLine:
 		cmd := quoteExe(exe) + " statusline --client claude-code"
 		raw, ok := root.get("statusLine")
 		current := ""
@@ -91,7 +91,7 @@ func (Adapter) Install(settings []byte, exe string, display client.Display) ([]b
 			}
 		}
 		switch {
-		case !ok && display == client.StatusLine:
+		case !ok:
 			root.set("statusLine", json.RawMessage(`{"type":"command","command":`+jsonString(cmd)+`}`))
 			changed = true
 			actions = append(actions, "status line: added "+cmd)
@@ -105,7 +105,7 @@ func (Adapter) Install(settings []byte, exe string, display client.Display) ([]b
 			} else {
 				actions = append(actions, "status line: already installed")
 			}
-		case ok && display == client.StatusLine:
+		default:
 			actions = append(actions, "status line: left unchanged, it runs another command; to add the Jalon segment, see \"Status line\" in docs/how-it-works.md")
 		}
 	}

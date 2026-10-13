@@ -16,6 +16,8 @@ The name is `<time>-<thread>-<slug>`: the time of the advice, the thread ID, and
 
 The advice gives you the lines to copy: `/clear`, then `@` and the handoff's full path, followed by a request to resume from it that names no task or next step, so the new session starts from the handoff, not from a task. In a session driven by a skill or command, the resume line re-invokes it, followed by the handoff's path as plain text and the same request. You can also resume in a new window.
 
+With the skill that `jalon init --skill` installs, `/jalon resume` finds the latest handoff of the project itself, or `/jalon resume <words>` the latest whose name or title holds them, or `/jalon resume <path>` that file. It names the handoff it picked and the two before it, sums up its goal, state and next step, then asks before going on, unless your words ask it to: `/jalon resume and go on`. A push, a pull request, an API call or a message the handoff lists still waits for your OK.
+
 ## Threads
 
 Threads link handoffs that continue one another. Jalon spots a resume from the handoff's path in the first prompt you type in a session, and a second handoff in the same session from the name it proposed at the last advice. A path in any later prompt of the session changes nothing.

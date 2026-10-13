@@ -10,6 +10,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/a-lafon/jalon/internal/client/claudecode"
 )
 
 const testExe = "/opt/homebrew/bin/jalon"
@@ -565,7 +567,7 @@ func TestInitKeepsTheMod(t *testing.T) {
 		enabled           bool
 		extra             string
 		want, wantNot     []string
-		statusLineKept    bool // Jalon's status line was in the settings and stays
+		statusLineGone    bool // Jalon's status line was in the settings and is removed
 		settingsUnchanged bool
 	}{
 		"rerun": {
@@ -573,10 +575,10 @@ func TestInitKeepsTheMod(t *testing.T) {
 				"mod: kept; jalon init --statusline draws the pole in the status line instead"},
 			wantNot: []string{"status line:", "(disabled)", "mod: it runs"}, settingsUnchanged: true,
 		},
-		"status line next to the mod": {
+		"status line from an earlier install": {
 			enabled: true, extra: jalonStatusLine,
-			want:    []string{"status line: already installed", "mod: kept\n", "both draw the pole"},
-			wantNot: []string{"status line: removed", "mod: it runs"}, statusLineKept: true, settingsUnchanged: true,
+			want:    []string{"status line: removed, the mod draws the pole", "mod: kept;"},
+			wantNot: []string{"mod: it runs"}, statusLineGone: true,
 		},
 		"disabled": {
 			want:    []string{"mod: kept (disabled); jalon init --statusline"},
@@ -601,7 +603,7 @@ func TestInitKeepsTheMod(t *testing.T) {
 				}
 			}
 			after, _ := os.ReadFile(path)
-			if strings.Contains(string(after), "statusLine") != tt.statusLineKept || !strings.Contains(string(after), `"jalon@jalon"`) {
+			if strings.Contains(string(after), "statusLine") || !strings.Contains(string(after), `"jalon@jalon"`) {
 				t.Errorf("settings = %s", after)
 			}
 			if tt.settingsUnchanged != bytes.Equal(after, before) {
@@ -658,20 +660,6 @@ func TestInitStatusLineNextToTheMod(t *testing.T) {
 	if b, _ := os.ReadFile(path); !strings.Contains(string(b), testExe+" statusline") {
 		t.Errorf("settings = %s", b)
 	}
-	// A plain rerun, as after an upgrade, keeps it.
-	out = runInitOK(t, "-settings", path)
-	if !strings.Contains(out, "status line: already installed") || !strings.Contains(out, "both draw the pole") {
-		t.Errorf("rerun output = %q", out)
-	}
-}
-
-func TestInitStatusLineOfAnotherCommandNextToTheMod(t *testing.T) {
-	withExecutable(t, testExe)
-	noClaude(t)
-	path := modSettings(t, true, testExe, `"statusLine": {"type": "command", "command": "~/bin/my-status.sh"}, `)
-	if out := runInitOK(t, "-settings", path, "-statusline"); !strings.Contains(out, "status line: left unchanged") || strings.Contains(out, "both draw") {
-		t.Errorf("output = %q", out)
-	}
 }
 
 func TestInitWithoutTheModAddsTheStatusLine(t *testing.T) {
@@ -689,11 +677,11 @@ func TestInitWithoutTheModAddsTheStatusLine(t *testing.T) {
 func TestInitKeptModDryRun(t *testing.T) {
 	withExecutable(t, testExe)
 	noClaude(t)
-	path := modSettings(t, true, testExe, `"statusLine": {"type": "command", "command": "/x/jalon statusline --client claude-code"}, `)
+	path := modSettings(t, true, testExe, `"statusLine": {"type": "command", "command": "`+testExe+` statusline --client claude-code"}, `)
 	before, _ := os.ReadFile(path)
 	out := runInitOK(t, "-settings", path, "-dry-run")
 	preview := out[strings.Index(out, "It would become:"):]
-	if !strings.Contains(out, "mod: kept") || !strings.Contains(preview, testExe+" statusline") {
+	if !strings.Contains(out, "mod: kept") || !strings.Contains(preview, `"UserPromptSubmit"`) || strings.Contains(preview, "statusLine") {
 		t.Errorf("output = %q", out)
 	}
 	if after, _ := os.ReadFile(path); !bytes.Equal(after, before) {
@@ -701,5 +689,148 @@ func TestInitKeptModDryRun(t *testing.T) {
 	}
 	if entries, _ := os.ReadDir(filepath.Dir(path)); len(entries) != 1 {
 		t.Errorf("dry run left files: %v", entries)
+	}
+}
+
+// skillFile returns the skill file init uses, in the home withExecutable set,
+// after writing content to it unless content is empty.
+func skillFile(t *testing.T, content string) string {
+	t.Helper()
+	path, err := claudecode.Adapter{}.SkillPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if content != "" {
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return path
+}
+
+const foreignSkill = "---\nname: jalon\ndescription: someone else's\n---\nMine.\n"
+
+func TestInitSkill(t *testing.T) {
+	withExecutable(t, testExe)
+	settings := filepath.Join(t.TempDir(), "settings.json")
+	path := skillFile(t, "")
+	out := runInitOK(t, "-settings", settings, "-skill")
+	if !strings.Contains(out, "Wrote "+path+".") {
+		t.Errorf("output = %q", out)
+	}
+	b, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(b, claudecode.Adapter{}.Skill()) {
+		t.Fatalf("skill = %s, %v", b, err)
+	}
+	if info, _ := os.Stat(path); info.Mode().Perm() != 0o600 {
+		t.Errorf("mode = %v, want 0600", info.Mode().Perm())
+	}
+	if info, _ := os.Stat(filepath.Dir(path)); info.Mode().Perm() != 0o700 {
+		t.Errorf("folder mode = %v, want 0700", info.Mode().Perm())
+	}
+
+	// A rerun without -skill keeps it and writes nothing.
+	if out := runInitOK(t, "-settings", settings); !strings.Contains(out, path+": nothing to change.") {
+		t.Errorf("rerun output = %q", out)
+	}
+	if _, err := os.Stat(path + ".jalon.bak"); !errors.Is(err, os.ErrNotExist) {
+		t.Error("the rerun wrote a backup")
+	}
+}
+
+func TestInitUpdatesTheSkill(t *testing.T) {
+	withExecutable(t, testExe)
+	old := "---\nname: jalon\n---\n<!-- Written by jalon init, which overwrites edits; jalon init --uninstall removes it. -->\nOld.\n"
+	path := skillFile(t, old)
+	settings := filepath.Join(t.TempDir(), "settings.json")
+	out := runInitOK(t, "-settings", settings)
+	if !strings.Contains(out, "Wrote "+path+".\n") {
+		t.Errorf("output = %q", out)
+	}
+	if b, _ := os.ReadFile(path); !bytes.Equal(b, claudecode.Adapter{}.Skill()) {
+		t.Errorf("skill = %s", b)
+	}
+	// The skill is Jalon's alone: no backup, so uninstall leaves no folder.
+	if _, err := os.Stat(path + ".jalon.bak"); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("backup written: %v", err)
+	}
+	runInitOK(t, "-settings", settings, "-uninstall")
+	if _, err := os.Stat(filepath.Dir(path)); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("skill folder left after uninstall: %v", err)
+	}
+}
+
+func TestInitWithoutTheSkill(t *testing.T) {
+	withExecutable(t, testExe)
+	path := skillFile(t, "")
+	if out := runInitOK(t, "-settings", filepath.Join(t.TempDir(), "settings.json")); strings.Contains(out, "skill") {
+		t.Errorf("output = %q", out)
+	}
+	if _, err := os.Stat(filepath.Dir(path)); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("skill folder created: %v", err)
+	}
+}
+
+func TestInitLeavesSomeoneElsesSkill(t *testing.T) {
+	for _, args := range [][]string{{"-skill"}, {}, {"-uninstall"}} {
+		t.Run(strings.Join(append([]string{"init"}, args...), " "), func(t *testing.T) {
+			withExecutable(t, testExe)
+			path := skillFile(t, foreignSkill)
+			settings := filepath.Join(t.TempDir(), "settings.json")
+			out := runInitOK(t, append([]string{"-settings", settings}, args...)...)
+			want := "skill: " + path + " is in the way, a jalon skill not written by Jalon; left as is"
+			if len(args) == 1 && args[0] == "-uninstall" {
+				want = "skill: " + path + " not written by Jalon, left as is"
+			} else if b, _ := os.ReadFile(settings); !strings.Contains(string(b), "hook prompt") {
+				t.Errorf("settings = %s", b)
+			}
+			if !strings.Contains(out, want) {
+				t.Errorf("output lacks %q:\n%s", want, out)
+			}
+			if b, _ := os.ReadFile(path); string(b) != foreignSkill {
+				t.Errorf("skill = %s", b)
+			}
+			if entries, _ := os.ReadDir(filepath.Dir(path)); len(entries) != 1 {
+				t.Errorf("skill folder = %v", entries)
+			}
+		})
+	}
+}
+
+func TestInitUninstallRemovesTheSkill(t *testing.T) {
+	withExecutable(t, testExe)
+	settings := filepath.Join(t.TempDir(), "settings.json")
+	path := skillFile(t, "")
+	runInitOK(t, "-settings", settings, "-skill")
+
+	if out := runInitOK(t, "-settings", settings, "-uninstall", "-dry-run"); !strings.Contains(out, "skill: would remove "+path) {
+		t.Errorf("dry run output = %q", out)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("the dry run removed the skill: %v", err)
+	}
+	if out := runInitOK(t, "-settings", settings, "-uninstall"); !strings.Contains(out, "skill: removed "+path+" and its folder") {
+		t.Errorf("output = %q", out)
+	}
+	if _, err := os.Stat(filepath.Dir(path)); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("skill folder left: %v", err)
+	}
+	if out := runInitOK(t, "-settings", settings, "-uninstall"); !strings.Contains(out, "skill: not installed") {
+		t.Errorf("second uninstall output = %q", out)
+	}
+}
+
+func TestInitSkillDryRun(t *testing.T) {
+	withExecutable(t, testExe)
+	path := skillFile(t, "")
+	out := runInitOK(t, "-settings", filepath.Join(t.TempDir(), "settings.json"), "-skill", "-dry-run")
+	if !strings.Contains(out, "Dry run, "+path+" not written. It would become:\n"+string(claudecode.Adapter{}.Skill())) {
+		t.Errorf("output = %q", out)
+	}
+	if _, err := os.Stat(filepath.Dir(path)); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("skill folder created: %v", err)
 	}
 }

@@ -10,7 +10,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"github.com/a-lafon/jalon/internal/cli"
@@ -28,15 +27,17 @@ var (
 
 // runInit runs "jalon init": it installs Jalon's hooks and its status line into
 // the client's settings, or with -mod the client's mod in place of the status
-// line, or removes them all with -uninstall. A rerun without -mod or
-// -statusline keeps a mod the settings record. After an install it prints the
-// advisor's thresholds, which -advise-tokens and -advise-step-tokens set in the
-// config file.
+// line, and with -skill the client's skill, or removes them all with
+// -uninstall. A rerun without -mod or -statusline keeps a mod the settings
+// record, and without -skill updates a skill Jalon wrote. After an install it
+// prints the advisor's thresholds, which -advise-tokens and -advise-step-tokens
+// set in the config file.
 func runInit(args []string, out io.Writer) error {
 	flags := flag.NewFlagSet("init", flag.ContinueOnError)
 	clientName := flags.String("client", defaultClient, "coding agent to install Jalon into")
 	statusLine := flags.Bool("statusline", true, "install the status line (terminal only; never replaces another one)")
 	mod := flags.Bool("mod", false, "install the client's mod in place of the status line (Claude Code 2.1.292 or later; downloads it from GitHub)")
+	skill := flags.Bool("skill", false, "install the /jalon skill, to resume from a handoff (Claude Code: ~/.claude/skills/jalon/)")
 	uninstall := flags.Bool("uninstall", false, "remove what Jalon installed")
 	dryRun := flags.Bool("dry-run", false, "print what would change, write nothing")
 	settingsPath := flags.String("settings", "", "client settings file (default: the client's user settings)")
@@ -92,6 +93,10 @@ func runInit(args []string, out io.Writer) error {
 			return fmt.Errorf("%w; nothing written", err)
 		}
 	}
+	skillInstaller, hasSkill := adapter.(client.SkillInstaller)
+	if *skill && !hasSkill {
+		return fmt.Errorf("%s has no skill; nothing written", *clientName)
+	}
 	path := *settingsPath
 	if path == "" {
 		if path, err = installer.SettingsPath(); err != nil {
@@ -103,15 +108,26 @@ func runInit(args []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
+	var skillPath string
+	var skillCurrent []byte
+	var skillMode fs.FileMode
+	if hasSkill {
+		if skillPath, err = skillInstaller.SkillPath(); err != nil {
+			return err
+		}
+		if skillCurrent, skillMode, err = readFile(skillPath); err != nil {
+			return err
+		}
+	}
 	// A rerun keeps the mod the settings record unless a display is asked for,
-	// runs no claude command for it, and leaves the status line as it is.
+	// and runs no claude command for it.
 	var modState client.ModState
 	if hasMod && !*uninstall {
 		modState = modInstaller.ReadMod(current)
 	}
 	keepMod := modState.Installed && !*mod && !statusLineSet
 	if keepMod {
-		display = client.NoDisplay
+		display = client.Mod
 	}
 	var next []byte
 	var actions []string
@@ -153,7 +169,7 @@ func runInit(args []string, out io.Writer) error {
 	for _, a := range actions {
 		fmt.Fprintln(out, a)
 	}
-	wrote, err := replaceFile(out, path, current, next, mode, *dryRun, "It would become:\n"+string(next))
+	wrote, err := replaceFile(out, path, current, next, mode, true, *dryRun, "It would become:\n"+string(next))
 	if err != nil {
 		return err
 	}
@@ -161,6 +177,13 @@ func runInit(args []string, out io.Writer) error {
 		fmt.Fprintln(out, "It applies to sessions started from now on.")
 	}
 	if *uninstall {
+		if hasSkill {
+			done, err := uninstallSkill(skillInstaller, skillPath, skillCurrent, *dryRun)
+			if err != nil {
+				return err
+			}
+			fmt.Fprintln(out, done)
+		}
 		if !hasMod {
 			return nil
 		}
@@ -178,26 +201,24 @@ func runInit(args []string, out io.Writer) error {
 		}
 		fmt.Fprintln(out, done)
 	}
-	// Install's actions tell whether Jalon's status line is now in the settings.
-	statusLineOn := slices.ContainsFunc(actions, func(a string) bool {
-		return strings.HasPrefix(a, "status line: added") || strings.HasPrefix(a, "status line: updated") ||
-			a == "status line: already installed"
-	})
-	if keepMod {
+	switch {
+	case keepMod:
 		kept := "mod: kept"
 		if !modState.Enabled {
 			kept += " (disabled)"
 		}
-		if !statusLineOn {
-			kept += "; jalon init --statusline draws the pole in the status line instead"
-		}
-		fmt.Fprintln(out, kept)
+		fmt.Fprintln(out, kept+"; jalon init --statusline draws the pole in the status line instead")
 		if !runsExe(modState.Binary, exe) {
 			fmt.Fprintf(out, "mod: it runs %s, not %s; jalon init --mod updates it\n", modState.Binary, exe)
 		}
-	}
-	if modState.Installed && statusLineOn {
+	case modState.Installed && display == client.StatusLine:
 		fmt.Fprintln(out, "mod: installed too, the mod and the status line both draw the pole")
+	}
+
+	if hasSkill {
+		if err := installSkill(out, skillInstaller, skillPath, skillCurrent, skillMode, *skill, *dryRun); err != nil {
+			return err
+		}
 	}
 
 	if setThresholds {
@@ -205,7 +226,7 @@ func runInit(args []string, out io.Writer) error {
 		if err != nil {
 			return err
 		}
-		if _, err := replaceFile(out, configPath, cfgCurrent, cfgNext, cfgMode, *dryRun, "Its context section would become:\n"+section); err != nil {
+		if _, err := replaceFile(out, configPath, cfgCurrent, cfgNext, cfgMode, true, *dryRun, "Its context section would become:\n"+section); err != nil {
 			return err
 		}
 	}
@@ -224,8 +245,9 @@ func runInit(args []string, out io.Writer) error {
 
 // replaceFile writes next over the file at path and says what it did. It
 // writes nothing when next is the current content, nor with -dry-run, which
-// prints preview instead. It reports whether it wrote.
-func replaceFile(out io.Writer, path string, current, next []byte, mode fs.FileMode, dryRun bool, preview string) (bool, error) {
+// prints preview instead. With keep, the previous file is backed up. It reports
+// whether it wrote.
+func replaceFile(out io.Writer, path string, current, next []byte, mode fs.FileMode, keep, dryRun bool, preview string) (bool, error) {
 	switch {
 	case bytes.Equal(next, current):
 		fmt.Fprintf(out, "%s: nothing to change.\n", path)
@@ -234,7 +256,7 @@ func replaceFile(out io.Writer, path string, current, next []byte, mode fs.FileM
 		fmt.Fprintf(out, "Dry run, %s not written. %s", path, preview)
 		return false, nil
 	}
-	backup, err := writeFile(path, current, next, mode)
+	backup, err := writeFile(path, current, next, mode, keep)
 	if err != nil {
 		return false, err
 	}
@@ -244,6 +266,42 @@ func replaceFile(out io.Writer, path string, current, next []byte, mode fs.FileM
 		fmt.Fprintf(out, "Wrote %s.\n", path)
 	}
 	return true, nil
+}
+
+// installSkill writes the skill when asked, or over a skill Jalon wrote, and
+// never over someone else's.
+func installSkill(out io.Writer, s client.SkillInstaller, path string, current []byte, mode fs.FileMode, asked, dryRun bool) error {
+	switch {
+	case current != nil && !s.OwnsSkill(current):
+		fmt.Fprintf(out, "skill: %s is in the way, a jalon skill not written by Jalon; left as is\n", path)
+	case current != nil || asked:
+		// The skill is all Jalon's, rebuilt from the binary: no backup, so uninstall
+		// leaves nothing behind.
+		_, err := replaceFile(out, path, current, s.Skill(), mode, false, dryRun, "It would become:\n"+string(s.Skill()))
+		return err
+	}
+	return nil
+}
+
+// uninstallSkill deletes the skill Jalon wrote, then its folder when empty, and
+// says what it did.
+func uninstallSkill(s client.SkillInstaller, path string, current []byte, dryRun bool) (string, error) {
+	switch {
+	case current == nil:
+		return "skill: not installed", nil
+	case !s.OwnsSkill(current):
+		return "skill: " + path + " not written by Jalon, left as is", nil
+	case dryRun:
+		return "skill: would remove " + path, nil
+	}
+	if err := os.Remove(path); err != nil {
+		return "", err
+	}
+	// Removing a folder that is not empty fails and keeps it.
+	if os.Remove(filepath.Dir(path)) == nil {
+		return "skill: removed " + path + " and its folder", nil
+	}
+	return "skill: removed " + path, nil
 }
 
 // installableExecutable is the absolute path the hook records: the jalon found
@@ -331,10 +389,10 @@ func readFile(path string) ([]byte, fs.FileMode, error) {
 	return b, info.Mode().Perm(), nil
 }
 
-// writeFile saves the current file next to it, then replaces it atomically
-// with next. A symlinked file, as in a dotfiles repository, has its target
+// writeFile saves the current file next to it when keep is set, then replaces
+// it atomically with next. A symlinked file, as in a dotfiles repository, has its target
 // replaced and the link kept. It returns the backup path, if any.
-func writeFile(path string, current, next []byte, mode fs.FileMode) (string, error) {
+func writeFile(path string, current, next []byte, mode fs.FileMode, keep bool) (string, error) {
 	target := path
 	if current != nil {
 		resolved, err := filepath.EvalSymlinks(path)
@@ -348,7 +406,7 @@ func writeFile(path string, current, next []byte, mode fs.FileMode) (string, err
 		return "", err
 	}
 	backup := ""
-	if current != nil {
+	if current != nil && keep {
 		backup = target + ".jalon.bak"
 		if err := os.WriteFile(backup, current, mode); err != nil {
 			return "", fmt.Errorf("backup: %w", err)

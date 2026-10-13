@@ -34,6 +34,8 @@ jalon init    # adds the hooks and the status line to ~/.claude/settings.json
 
 For Linux and the other ways, see [installing Jalon](docs/install.md).
 
+To resume from a handoff with `/jalon resume` rather than `@` and its path, run `jalon init --skill`: see [resuming](docs/handoffs.md#resuming).
+
 To draw the pole above the prompt instead of in the status line, with Claude Code 2.1.292 or later, run `jalon init --mod`: see [the pole above the prompt](docs/how-it-works.md#the-pole-above-the-prompt) for its limits.
 
 Then start a new Claude Code session, in the terminal or in VS Code, and work as usual. `jalon init --dry-run` shows what it would change; see [configuration](docs/configuration.md) for its flags.
@@ -56,13 +58,14 @@ It writes only:
 - **the advice**, added to the model's context by the prompt hook, on a prompt you typed, when the threshold is crossed; or by the stop hook at the end of a turn you started, which makes the model go on once to add the section: when the threshold was crossed during the turn, or when the reply left out the section asked for. Only a session you typed in gets it: a session a program started with `claude -p` does not, but a program that resumes a session you typed in is not detected by the prompt hook;
 - **`.jalon/handoffs/`** in your project, with its `.gitignore`; the model writes the handoff files when you take that option;
 - **`~/.claude/settings.json`**, only when you run `jalon init`, with a `.jalon.bak` backup;
+- **`~/.claude/skills/jalon/`**, only when you run `jalon init --skill`: the `/jalon` skill, which only you invoke, so its description is not added to the starting context (checked with Claude Code 2.1.296); a later `jalon init` updates it, and never replaces a `jalon` skill it did not write;
 - **`~/.jalon/`**: its session state, and its config when `jalon init` sets a threshold.
 
 The one exception is the mod, when you ask for it: `jalon init --mod` runs Claude Code's `claude plugin install`, which downloads the mod from GitHub and records it in `~/.claude/settings.json`, and `jalon init --uninstall` runs `claude plugin marketplace remove jalon`. The mod itself only runs `jalon statusline` and draws its answer.
 
 ## Uninstall
 
-Remove the hooks first, then the binary: `jalon init --uninstall` removes the hooks, the status line and the mod it installed, and nothing else. Then `brew uninstall jalon`, or delete the binary. Delete `~/.jalon/` to remove its state and config. Handoff files are yours, in your projects under `.jalon/handoffs/`.
+Remove the hooks first, then the binary: `jalon init --uninstall` removes the hooks, the status line, the mod and the skill it installed, and nothing else. Then `brew uninstall jalon`, or delete the binary. Delete `~/.jalon/` to remove its state and config. Handoff files are yours, in your projects under `.jalon/handoffs/`.
 
 ## Documentation
 
