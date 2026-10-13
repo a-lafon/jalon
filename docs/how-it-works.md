@@ -12,7 +12,7 @@ The prompt hook reads the context size from the conversation's transcript, and t
 
 The defaults are a judgment, not a measurement: the [replay test](cost-and-quality.md) backs resetting a large context, not these exact values. Check them against your own history with the [impact report](impact-report.md), and change them with `jalon init --advise-tokens` (see [configuration](configuration.md)).
 
-The advice comes only on prompts you type, not on messages from other sessions or background tasks. The hook works in the terminal and in the VS Code extension, needs no other process, never blocks your prompt, and gives up after 500 ms.
+The advice comes only on prompts you type, not on messages from other sessions or background tasks, and only in a session a person typed in: a script or an agent that runs `claude -p` reads the model's last message as its output, so Jalon leaves the sessions it starts alone. It tells them apart from the transcript, where Claude Code marks a typed prompt; a session counts as typed in from the prompt after the first one you type. Known limit: a program that resumes a session you typed in, with `claude -p --resume`, is not detected, since the session stays recorded as typed in, so its prompts can get the advice. The hook works in the terminal and in the VS Code extension, needs no other process, never blocks your prompt, and gives up after 500 ms.
 
 ## What you see
 
@@ -69,4 +69,4 @@ Prefer the status line unless you want the pole in Claude Desktop or on a row of
 
 ## Other clients
 
-Everything specific to Claude Code sits in `internal/client/claudecode`, behind the `client.Adapter` interface in `internal/client/client.go`: how to read the hook input, find the context size, write the hook output, the reset commands, and, through the optional `client.Installer`, how to install the hook. To add a client, implement that interface in `internal/client/<name>/`, register it in `cmd/jalon/clients.go`, and install `jalon hook prompt --client <name>` as that client's prompt hook.
+Everything specific to Claude Code sits in `internal/client/claudecode`, behind the `client.Adapter` interface in `internal/client/client.go`: how to read the hook input, find the context size and the typed prompts, write the hook output, the reset commands, and, through the optional `client.Installer`, how to install the hook. To add a client, implement that interface in `internal/client/<name>/`, register it in `cmd/jalon/clients.go`, and install `jalon hook prompt --client <name>` as that client's prompt hook.
