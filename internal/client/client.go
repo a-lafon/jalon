@@ -24,6 +24,16 @@ type Prompt struct {
 	Ref string
 }
 
+// Tail is what the end of the client's record of the conversation shows.
+type Tail struct {
+	// Size is the size in tokens of the main conversation's context, 0 when it
+	// cannot be told.
+	Size int
+	// Typed is true when it was looked for and shows a prompt typed by a
+	// person, not sent by a program.
+	Typed bool
+}
+
 // Commands are what the user types to reset a context in this client.
 type Commands struct {
 	Clear   string // starts an empty conversation, e.g. "/clear"
@@ -39,9 +49,11 @@ type Adapter interface {
 	Name() string
 	// ReadPrompt parses the client's prompt hook input.
 	ReadPrompt(stdin []byte) (Prompt, error)
-	// ContextSize is the size in tokens of the main conversation's context, and
-	// false when it cannot be told.
-	ContextSize(Prompt) (int, bool)
+	// ReadTail reads the end of the conversation of p once: the context size,
+	// and with typed, whether a prompt typed by a person shows. Looking for a
+	// typed prompt can read much further back, so it is asked for only before
+	// advice.
+	ReadTail(p Prompt, typed bool) Tail
 	// ContextFloor is the size in tokens of the conversation's first request,
 	// which a reset cannot remove, and false when it cannot be told yet.
 	ContextFloor(Prompt) (int, bool)

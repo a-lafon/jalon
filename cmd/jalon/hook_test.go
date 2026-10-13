@@ -17,6 +17,13 @@ import (
 	"github.com/a-lafon/jalon/internal/advisor"
 )
 
+// TestMain lifts the time limits of the hook and the status line: a test's
+// output must not depend on how fast the runner is.
+func TestMain(m *testing.M) {
+	hookTimeout, statuslineTimeout = time.Hour, time.Hour
+	os.Exit(m.Run())
+}
+
 // useHome points ~ at a temporary folder, so the state files never touch the real one.
 func useHome(t *testing.T) string {
 	t.Helper()
@@ -254,6 +261,18 @@ func assistantLine(size int) string {
 	return fmt.Sprintf(`{"type":"assistant","isSidechain":false,"message":{"role":"assistant","usage":{"input_tokens":2,"cache_creation_input_tokens":%d,"cache_read_input_tokens":%d,"output_tokens":9}}}`+"\n", size/4, size-size/4-2)
 }
 
+// typedPrompt is the transcript entry of a prompt a person typed: Claude Code
+// writes it after the prompt hook ran, with origin kind "human". A claude -p
+// prompt has no origin.
+func typedPrompt(promptID string) string {
+	return fmt.Sprintf(`{"type":"user","isSidechain":false,"promptId":%q,"origin":{"kind":"human"},"message":{"role":"user","content":"hi"}}`+"\n", promptID)
+}
+
+// programPrompt is the transcript entry of a prompt claude -p sent.
+func programPrompt(promptID string) string {
+	return fmt.Sprintf(`{"type":"user","isSidechain":false,"promptId":%q,"message":{"role":"user","content":"run the task"}}`+"\n", promptID)
+}
+
 // appendTranscript appends lines to the session's transcript.
 func appendTranscript(t *testing.T, session string, lines ...string) {
 	t.Helper()
@@ -288,7 +307,7 @@ const thresholdsConfig = "context:\n  advise_tokens: 150000\n  advise_step_token
 func hookState(t *testing.T, session string, size int) (dir, configPath string) {
 	t.Helper()
 	dir = useHome(t)
-	appendTranscript(t, session, assistantLine(startSize), assistantLine(size))
+	appendTranscript(t, session, typedPrompt("p0"), assistantLine(startSize), assistantLine(size))
 	return dir, configWith(t, thresholdsConfig)
 }
 
@@ -581,8 +600,8 @@ func TestHookIsSilentWhenTheAdvisorIsDisabled(t *testing.T) {
 
 func TestHookDeletesOldStateFiles(t *testing.T) {
 	dir, cfg := hookState(t, "s1", 100_000)
-	advisor.Record(dir, "old", 100_000, hookNow.Add(-8*24*time.Hour))
-	advisor.Record(dir, "recent", 100_000, hookNow.Add(-6*24*time.Hour))
+	advisor.Record(dir, "old", 100_000, hookNow.Add(-8*24*time.Hour), false)
+	advisor.Record(dir, "recent", 100_000, hookNow.Add(-6*24*time.Hour), false)
 	runPrompt(t, cfg, hookInput("s1", t.TempDir()))
 	if _, ok := advisor.Load(dir, "old"); ok {
 		t.Error("a state file older than 7 days was kept")
@@ -704,7 +723,7 @@ func TestNewThreadIDDropsBiasedBytes(t *testing.T) {
 func adviseAt(t *testing.T, cfg, session, cwd, text string, size int, now time.Time) string {
 	t.Helper()
 	if _, err := os.Stat(transcriptFile(session)); err != nil {
-		appendTranscript(t, session, assistantLine(startSize))
+		appendTranscript(t, session, typedPrompt("p0"), assistantLine(startSize))
 	}
 	appendTranscript(t, session, assistantLine(size))
 	var out bytes.Buffer
@@ -976,4 +995,46 @@ func TestHookTriesTheFloorAgainWhenTheTranscriptHasNone(t *testing.T) {
 	if st, _ := advisor.Load(dir, "s1"); st.Floor != 40_000 {
 		t.Errorf("floor = %d, want 40000 on the next prompt", st.Floor)
 	}
+}
+
+// A program that runs claude -p reads the model's last message as its output:
+// the hooks never advise a session no person typed in.
+func TestProgramsAreNeverAdvised(t *testing.T) {
+	t.Run("program resumes a session", func(t *testing.T) {
+		dir := useHome(t)
+		cfg := configWith(t, thresholdsConfig)
+		repo := gitRepo(t)
+		appendTranscript(t, "s1", programPrompt("p6"), assistantLine(startSize), programPrompt("p7"), assistantLine(300_000))
+		if got := runPrompt(t, cfg, hookInput("s1", repo)); got != "" {
+			t.Errorf("output = %q, want nothing", got)
+		}
+		if st, _ := advisor.Load(dir, "s1"); st.Size != 300_000 || st.LastAdvised != 0 || st.Typed {
+			t.Errorf("state = %+v, want the size recorded, no advice", st)
+		}
+		if _, err := os.Stat(filepath.Join(repo, ".jalon")); err == nil {
+			t.Error("a handoff folder was created")
+		}
+
+		// A person then types in it: the prompt counts from the next one on.
+		if got := runPrompt(t, cfg, hookInput("s1", repo)); got != "" {
+			t.Errorf("output at the typed prompt = %q, want nothing: it is not in the transcript yet", got)
+		}
+		appendTranscript(t, "s1", typedPrompt("p9"), assistantLine(305_000))
+		if got := runPrompt(t, cfg, hookInput("s1", repo)); !strings.Contains(got, "305K") {
+			t.Errorf("output after the typed prompt = %q, want the advice", got)
+		}
+	})
+
+	t.Run("recorded once", func(t *testing.T) {
+		dir := useHome(t)
+		cfg := configWith(t, thresholdsConfig)
+		// The typed prompt is out of the part read, but the state recorded it.
+		appendTranscript(t, "s1", assistantLine(startSize), assistantLine(300_000))
+		if err := advisor.Record(dir, "s1", 100_000, hookNow, true); err != nil {
+			t.Fatal(err)
+		}
+		if got := runPrompt(t, cfg, hookInput("s1", gitRepo(t))); !strings.Contains(got, "300K") {
+			t.Errorf("output = %q, want the advice", got)
+		}
+	})
 }

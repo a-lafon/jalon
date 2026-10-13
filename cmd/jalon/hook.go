@@ -20,8 +20,9 @@ import (
 )
 
 // hookTimeout bounds the whole command: the hook runs before every prompt is
-// sent and must never delay it noticeably.
-const hookTimeout = 500 * time.Millisecond
+// sent and must never delay it noticeably. Tests lift it, so a slow runner
+// never loses the output.
+var hookTimeout = 500 * time.Millisecond
 
 // resetInstruction is what the session's model is asked to do when a reset is
 // advised. It is the same for every client. {tokens}, {dir} (the absolute
@@ -111,8 +112,8 @@ func runPromptHook(ctx context.Context, args []string, stdin io.Reader, out io.W
 		}
 		// The size is read from the client's own record of the conversation, so
 		// the hook needs no status line.
-		size, ok := adapter.ContextSize(prompt)
-		if !ok || advisor.Record(dir, prompt.Session, size, now) != nil {
+		size := adapter.ReadTail(prompt, false).Size
+		if size <= 0 || advisor.Record(dir, prompt.Session, size, now, false) != nil {
 			return nil
 		}
 		st, ok := advisor.Load(dir, prompt.Session)
@@ -130,6 +131,17 @@ func runPromptHook(ctx context.Context, args []string, stdin io.Reader, out io.W
 			advisor.Config{AdviseTokens: cfg.Context.AdviseTokens, StepTokens: cfg.Context.AdviseStepTokens})
 		if advice.Kind != advisor.Reset {
 			return nil
+		}
+		// Only a session a person typed in is advised: in one a program drives, the
+		// reply is the program's output. A program that resumes a session a person
+		// typed in is not told apart. The prompt is not in the transcript yet, so any
+		// typed prompt before it shows the session is typed in; it is looked for
+		// only now, since in a program's session the search reads 8 MB.
+		if !st.Typed {
+			if !adapter.ReadTail(prompt, true).Typed ||
+				advisor.Record(dir, prompt.Session, st.Size, now, true) != nil {
+				return nil
+			}
 		}
 
 		// A handoff written from the last advice's name is the parent of the next one.
