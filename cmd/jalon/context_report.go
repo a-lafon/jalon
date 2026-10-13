@@ -63,6 +63,8 @@ func runContextReport(ctx context.Context, args []string, out io.Writer) error {
 		cli.Thousands(int64(params.Advisor.AdviseTokens)), cli.Thousands(int64(params.Advisor.StepTokens)), params.StaleAfterTurns)
 
 	reader := transcript.NewReader()
+	// The transcripts are Claude Code's, so its adapter tells the typed prompts.
+	reader.Typed = adapters[defaultClient].IsTyped
 	convs, err := reader.ReadDir(*transcripts, since)
 	if err != nil {
 		return err

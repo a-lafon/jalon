@@ -15,13 +15,14 @@ var t0 = time.Date(2026, 10, 6, 8, 0, 0, 0, time.UTC)
 
 // conv builds a conversation from the prompt size of each user turn. Each turn
 // has one user block of 10 bytes, then one request and one tool result of
-// resultBytes, so the bytes of the context are known.
+// resultBytes, so the bytes of the context are known. The prompt hook acts on
+// every turn.
 func conv(file string, resultBytes int, prompts ...int) transcript.Conversation {
 	c := transcript.Conversation{File: file, Human: 1}
 	for i, p := range prompts {
 		at := t0.Add(time.Duration(i) * time.Hour)
 		c.Blocks = append(c.Blocks, transcript.Block{Turn: i, Bytes: 10, Request: i})
-		c.Turns = append(c.Turns, transcript.Turn{Time: at, PromptTokens: p, Block: len(c.Blocks) - 1, Request: i})
+		c.Turns = append(c.Turns, transcript.Turn{Time: at, PromptTokens: p, Block: len(c.Blocks) - 1, Request: i, Advisable: true})
 		c.Requests = append(c.Requests, transcript.Request{Time: at, Turn: i, PromptTokens: p})
 		c.Blocks = append(c.Blocks, transcript.Block{Turn: i, Bytes: resultBytes, ToolResult: true, Request: i + 1})
 	}
@@ -297,12 +298,12 @@ func TestStaleShareByRequests(t *testing.T) {
 	// long tool loop: blocks at request ages 0..59, 100 bytes each.
 	c := transcript.Conversation{File: "a", Human: 1}
 	c.Blocks = append(c.Blocks, transcript.Block{Turn: 0, Bytes: 10, Request: 0})
-	c.Turns = append(c.Turns, transcript.Turn{Time: t0, PromptTokens: 10, Block: 0, Request: 0})
+	c.Turns = append(c.Turns, transcript.Turn{Time: t0, PromptTokens: 10, Block: 0, Request: 0, Advisable: true})
 	for r := 0; r < 60; r++ {
 		c.Requests = append(c.Requests, transcript.Request{Time: t0, Turn: 0, PromptTokens: 10})
 		c.Blocks = append(c.Blocks, transcript.Block{Turn: 0, Bytes: 100, ToolResult: true, Request: r + 1})
 	}
-	c.Turns = append(c.Turns, transcript.Turn{Time: t0.Add(time.Hour), PromptTokens: 250000, Block: len(c.Blocks), Request: 60})
+	c.Turns = append(c.Turns, transcript.Turn{Time: t0.Add(time.Hour), PromptTokens: 250000, Block: len(c.Blocks), Request: 60, Advisable: true})
 	c.Blocks = append(c.Blocks, transcript.Block{Turn: 1, Bytes: 10, Request: 60})
 	c.Requests = append(c.Requests, transcript.Request{Time: t0.Add(time.Hour), Turn: 1, PromptTokens: 250000})
 

@@ -85,6 +85,9 @@ func projectDir(cwd string) string {
 	return cwd
 }
 
+func (Adapter) IsTyped(prompt string) bool { return isHuman(prompt) }
+
+// isHuman reports whether the prompt hook takes prompt for one a person typed.
 func isHuman(prompt string) bool {
 	text := strings.TrimLeftFunc(prompt, unicode.IsSpace)
 	for _, p := range notHumanPrefixes {
