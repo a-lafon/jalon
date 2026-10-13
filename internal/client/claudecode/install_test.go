@@ -15,20 +15,24 @@ const exe = "/opt/homebrew/bin/jalon"
 // promptCommands lists the commands of hooks.UserPromptSubmit, in order.
 func promptCommands(t *testing.T, settings []byte) []string {
 	t.Helper()
+	return hookCommands(t, settings, "UserPromptSubmit")
+}
+
+// hookCommands lists the commands of hooks.<event>, in order.
+func hookCommands(t *testing.T, settings []byte, event string) []string {
+	t.Helper()
 	var s struct {
-		Hooks struct {
-			UserPromptSubmit []struct {
-				Hooks []struct {
-					Command string `json:"command"`
-				} `json:"hooks"`
-			} `json:"UserPromptSubmit"`
+		Hooks map[string][]struct {
+			Hooks []struct {
+				Command string `json:"command"`
+			} `json:"hooks"`
 		} `json:"hooks"`
 	}
 	if err := json.Unmarshal(settings, &s); err != nil {
 		t.Fatalf("result is not valid JSON: %v\n%s", err, settings)
 	}
 	var cmds []string
-	for _, g := range s.Hooks.UserPromptSubmit {
+	for _, g := range s.Hooks[event] {
 		for _, h := range g.Hooks {
 			cmds = append(cmds, h.Command)
 		}
@@ -74,6 +78,17 @@ func TestInstallEmpty(t *testing.T) {
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/opt/homebrew/bin/jalon hook stop --client claude-code",
+            "timeout": 2
+          }
+        ]
+      }
     ]
   }
 }
@@ -107,7 +122,7 @@ func TestInstallKeepsOtherKeysAndHooks(t *testing.T) {
 	}
 	hooks, _ := parseObject([]byte(out))
 	raw, _ := hooks.get("hooks")
-	if got, want := keys(t, raw), []string{"PreToolUse", "UserPromptSubmit"}; !slices.Equal(got, want) {
+	if got, want := keys(t, raw), []string{"PreToolUse", "UserPromptSubmit", "Stop"}; !slices.Equal(got, want) {
 		t.Errorf("hooks keys = %v, want %v", got, want)
 	}
 }
@@ -118,11 +133,12 @@ func TestInstallIdempotent(t *testing.T) {
 	if twice != once {
 		t.Errorf("second install changed the settings:\n%s", twice)
 	}
-	if want := []string{"prompt hook: already installed", "status line: already installed"}; !slices.Equal(actions, want) {
+	if want := []string{"prompt hook: already installed", "stop hook: already installed", "status line: already installed"}; !slices.Equal(actions, want) {
 		t.Errorf("actions = %v, want %v", actions, want)
 	}
 	// Unchanged settings come back byte for byte, whatever their formatting.
-	in := "{\"hooks\":{\"UserPromptSubmit\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"" + exe + " hook prompt\"}]}]}}"
+	in := "{\"hooks\":{\"UserPromptSubmit\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"" + exe + " hook prompt\"}]}]," +
+		"\"Stop\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"" + exe + " hook stop\"}]}]}}"
 	if out, _ := install(t, in, client.NoDisplay); out != in {
 		t.Errorf("unchanged settings were rewritten:\n%s", out)
 	}
@@ -304,6 +320,69 @@ func TestInstallDuplicateEntries(t *testing.T) {
 	}
 }
 
+func TestInstallStopHook(t *testing.T) {
+	stopCmd := exe + " hook stop --client claude-code"
+	t.Run("another stop hook", func(t *testing.T) {
+		in := `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"~/bin/notify.sh"}]}]}}`
+		out, _ := install(t, in, client.NoDisplay)
+		if got := hookCommands(t, []byte(out), "Stop"); !slices.Equal(got, []string{"~/bin/notify.sh", stopCmd}) {
+			t.Errorf("stop hooks = %v, want notify.sh then Jalon's", got)
+		}
+		if !strings.Contains(out, `"hooks": [
+          {
+            "type": "command",
+            "command": "~/bin/notify.sh"
+          }
+        ]
+      },
+      {`) {
+			t.Errorf("Jalon's stop hook is not in a group of its own after the other:\n%s", out)
+		}
+	})
+	t.Run("upgrade from a prompt hook only", func(t *testing.T) {
+		in := `{"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":"` + exe + ` hook prompt --client claude-code","timeout":2}]}]}}`
+		out, actions := install(t, in, client.NoDisplay)
+		if got := promptCommands(t, []byte(out)); !slices.Equal(got, []string{exe + " hook prompt --client claude-code"}) {
+			t.Errorf("prompt hooks = %v", got)
+		}
+		if got := hookCommands(t, []byte(out), "Stop"); !slices.Equal(got, []string{stopCmd}) {
+			t.Errorf("stop hooks = %v", got)
+		}
+		if want := []string{"prompt hook: already installed", "stop hook: added " + stopCmd}; !slices.Equal(actions, want) {
+			t.Errorf("actions = %v, want %v", actions, want)
+		}
+	})
+	t.Run("entry written by hand", func(t *testing.T) {
+		in := `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"~/go/bin/jalon hook stop -config /x.yaml","timeout":5}]}]}}`
+		out, _ := install(t, in, client.NoDisplay)
+		if got := hookCommands(t, []byte(out), "Stop"); !slices.Equal(got, []string{exe + " hook stop -config /x.yaml"}) {
+			t.Errorf("stop hooks = %v", got)
+		}
+		if !strings.Contains(out, `"timeout": 5`) {
+			t.Errorf("timeout lost:\n%s", out)
+		}
+	})
+	t.Run("two Jalon stop hooks", func(t *testing.T) {
+		in := `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"jalon hook stop"}]},{"hooks":[{"type":"command","command":"jalon hook stop"}]}]}}`
+		out, actions := install(t, in, client.NoDisplay)
+		if got := hookCommands(t, []byte(out), "Stop"); len(got) != 2 {
+			t.Errorf("stop hooks = %v, want both kept", got)
+		}
+		if !slices.Contains(actions, "stop hook: 2 Jalon entries, each one runs: remove the extra ones by hand") {
+			t.Errorf("actions = %v", actions)
+		}
+	})
+	t.Run("lookalikes", func(t *testing.T) {
+		for _, cmd := range []string{"jalon hook stopwatch", "jalon hook prompt", "jalonx hook stop"} {
+			in := `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":` + jsonString(cmd) + `}]}]}}`
+			out, _ := install(t, in, client.NoDisplay)
+			if got := hookCommands(t, []byte(out), "Stop"); !slices.Equal(got, []string{cmd, stopCmd}) {
+				t.Errorf("%q: stop hooks = %v, want it kept and Jalon's added", cmd, got)
+			}
+		}
+	})
+}
+
 func TestUninstall(t *testing.T) {
 	in := `{
   "hooks": {
@@ -311,7 +390,8 @@ func TestUninstall(t *testing.T) {
     "UserPromptSubmit": [
       {"hooks": [{"type": "command", "command": "other-tool"}, {"type": "command", "command": "~/go/bin/jalon hook prompt"}]},
       {"hooks": [{"type": "command", "command": "/x/jalon hook prompt --client claude-code"}]}
-    ]
+    ],
+    "Stop": [{"hooks": [{"type": "command", "command": "/x/jalon hook stop --client claude-code"}]}]
   },
   "statusLine": {"type": "command", "command": "/x/jalon statusline"}
 }`
@@ -325,8 +405,12 @@ func TestUninstall(t *testing.T) {
 	if got, want := keys(t, out), []string{"hooks"}; !slices.Equal(got, want) {
 		t.Errorf("keys = %v, want %v", got, want)
 	}
-	if len(actions) != 3 {
-		t.Errorf("actions = %v, want two hooks and the status line removed", actions)
+	root, _ := parseObject(out)
+	if raw, _ := root.get("hooks"); !slices.Equal(keys(t, raw), []string{"PreToolUse", "UserPromptSubmit"}) {
+		t.Errorf("hooks keys = %v, want the empty Stop removed", keys(t, raw))
+	}
+	if len(actions) != 4 || !slices.Contains(actions, "stop hook: removed /x/jalon hook stop --client claude-code") {
+		t.Errorf("actions = %v, want two prompt hooks, the stop hook and the status line removed", actions)
 	}
 
 	t.Run("leaves no empty containers", func(t *testing.T) {
@@ -347,7 +431,7 @@ func TestUninstall(t *testing.T) {
 		if err != nil || string(out) != in {
 			t.Errorf("got %s, %v", out, err)
 		}
-		if !slices.Equal(actions, []string{"prompt hook: not installed"}) {
+		if !slices.Equal(actions, []string{"prompt hook: not installed", "stop hook: not installed"}) {
 			t.Errorf("actions = %v", actions)
 		}
 	})

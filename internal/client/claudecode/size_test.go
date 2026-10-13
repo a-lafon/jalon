@@ -125,7 +125,7 @@ func TestContextSizeOfALargeTranscriptReadsOnlyTheLastMB(t *testing.T) {
 
 // sizeOf is the size readTail finds, and whether it found one.
 func sizeOf(path string) (int, bool) {
-	tail := readTail(path, false)
+	tail := readTail(path, "", false)
 	return tail.Size, tail.Size > 0
 }
 
@@ -142,24 +142,27 @@ func typedLine(promptID string, human, sidechain bool) string {
 func TestReadTailTyped(t *testing.T) {
 	toolResult := `{"type":"user","promptId":"p1","message":{"role":"user","content":[{"type":"tool_result","content":"\"human\""}]}}`
 	tests := map[string]struct {
-		lines    []string
-		anyTyped bool
+		lines             []string
+		anyTyped, p1Typed bool
 	}{
-		"typed prompt":             {[]string{typedLine("p1", true, false), sizeLine(60_000, false)}, true},
-		"claude -p prompt":         {[]string{typedLine("p1", false, false), toolResult, sizeLine(60_000, false)}, false},
-		"typed earlier, -p now":    {[]string{typedLine("p0", true, false), sizeLine(50_000, false), typedLine("p1", false, false), sizeLine(60_000, false)}, true},
-		"typed in a subagent only": {[]string{typedLine("p1", true, true), sizeLine(60_000, false)}, false},
-		"typed after the size":     {[]string{sizeLine(60_000, false), typedLine("p1", true, false)}, true},
-		"typed, no size":           {[]string{typedLine("p1", true, false)}, true},
+		"typed prompt":             {[]string{typedLine("p1", true, false), sizeLine(60_000, false)}, true, true},
+		"claude -p prompt":         {[]string{typedLine("p1", false, false), toolResult, sizeLine(60_000, false)}, false, false},
+		"typed earlier, -p now":    {[]string{typedLine("p0", true, false), sizeLine(50_000, false), typedLine("p1", false, false), sizeLine(60_000, false)}, true, false},
+		"typed in a subagent only": {[]string{typedLine("p1", true, true), sizeLine(60_000, false)}, false, false},
+		"typed after the size":     {[]string{sizeLine(60_000, false), typedLine("p1", true, false)}, true, true},
+		"typed, no size":           {[]string{typedLine("p1", true, false)}, true, true},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			path := writeLines(t, tt.lines...)
-			if got := readTail(path, true); got.Typed != tt.anyTyped {
+			if got := readTail(path, "", true); got.Typed != tt.anyTyped {
 				t.Errorf("any prompt typed = %v, want %v", got.Typed, tt.anyTyped)
 			}
-			if got := readTail(path, false); got.Typed {
+			if got := readTail(path, "", false); got.Typed {
 				t.Error("typed found without being looked for")
+			}
+			if got := readTail(path, "p1", true); got.Typed != tt.p1Typed {
+				t.Errorf("p1 typed = %v, want %v", got.Typed, tt.p1Typed)
 			}
 		})
 	}
@@ -168,11 +171,11 @@ func TestReadTailTyped(t *testing.T) {
 func TestReadTailLooksForTheTypedPromptAsFarAsForTheSize(t *testing.T) {
 	// A long turn: the prompt is 3 MB before the end, the size at the end.
 	path := bigFile(t, []string{typedLine("p1", true, false)}, 3<<20, []string{sizeLine(250_000, false)})
-	if got := readTail(path, true); !got.Typed || got.Size != 250_000 {
-		t.Errorf("tail = %+v, want a typed prompt and size 250000", got)
+	if got := readTail(path, "p1", true); !got.Typed || got.Size != 250_000 {
+		t.Errorf("tail = %+v, want p1 typed and size 250000", got)
 	}
 	path = bigFile(t, []string{typedLine("p1", true, false)}, 9<<20, []string{sizeLine(250_000, false)})
-	if got := readTail(path, true); got.Typed || got.Size != 250_000 {
-		t.Errorf("tail = %+v, want the typed prompt out of reach past 8 MB and size 250000", got)
+	if got := readTail(path, "p1", true); got.Typed || got.Size != 250_000 {
+		t.Errorf("tail = %+v, want p1 out of reach past 8 MB and size 250000", got)
 	}
 }

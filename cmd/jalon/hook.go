@@ -15,6 +15,7 @@ import (
 
 	"github.com/a-lafon/jalon/internal/advisor"
 	"github.com/a-lafon/jalon/internal/cli"
+	"github.com/a-lafon/jalon/internal/client"
 	"github.com/a-lafon/jalon/internal/config"
 	"github.com/a-lafon/jalon/internal/handoff"
 )
@@ -50,12 +51,24 @@ Recommend a compact whose line keeps the running work, what to do with its resul
 of option 2; add one line saying the user can ask for that handoff once the work has reported.
 Keep the section under 10 lines, apart from the handoff file. Give it in this reply only: do not repeat it in later replies.`
 
-// runHook runs "jalon hook <name>". Only the prompt hook exists.
+// reminderPrefix starts the stop hook's reason when the reply lacks the section
+// asked at the start of the turn. The context report tells it from an advice
+// by its prefix, so a reminder never counts as a second advice.
+const reminderPrefix = "Jalon: reminder"
+
+const hookUsage = `usage: jalon hook prompt|stop [-client name] [-config path]`
+
+// runHook runs "jalon hook <name>": the prompt hook or the stop hook.
 func runHook(ctx context.Context, args []string, stdin io.Reader, out io.Writer) error {
-	if len(args) == 0 || args[0] != "prompt" {
-		return errors.New(`usage: jalon hook prompt [-client name] [-config path]`)
+	if len(args) > 0 {
+		switch args[0] {
+		case "prompt":
+			return runPromptHook(ctx, args[1:], stdin, out, time.Now())
+		case "stop":
+			return runStopHook(ctx, args[1:], stdin, out)
+		}
 	}
-	return runPromptHook(ctx, args[1:], stdin, out, time.Now())
+	return errors.New(hookUsage)
 }
 
 // stateMaxAge is how long a session's state file is kept after its last record.
@@ -116,8 +129,16 @@ func runPromptHook(ctx context.Context, args []string, stdin io.Reader, out io.W
 		}
 		// The size is read from the client's own record of the conversation, so
 		// the hook needs no status line.
-		size := adapter.ReadTail(prompt, false).Size
-		if size <= 0 || advisor.Record(dir, prompt.Session, size, now, false) != nil {
+		size := adapter.ReadTail(prompt, "", false).Size
+		if size <= 0 {
+			// A session's first prompt has no size yet: its ID still tells the stop
+			// hook its turn.
+			if prompt.ID != "" {
+				_ = advisor.SetPrompt(dir, prompt.Session, prompt.ID)
+			}
+			return nil
+		}
+		if advisor.Record(dir, prompt.Session, size, now, prompt.ID, false) != nil {
 			return nil
 		}
 		st, ok := advisor.Load(dir, prompt.Session)
@@ -142,8 +163,8 @@ func runPromptHook(ctx context.Context, args []string, stdin io.Reader, out io.W
 		// typed prompt before it shows the session is typed in; it is looked for
 		// only now, since in a program's session the search reads 8 MB.
 		if !st.Typed {
-			if !adapter.ReadTail(prompt, true).Typed ||
-				advisor.Record(dir, prompt.Session, st.Size, now, true) != nil {
+			if !adapter.ReadTail(prompt, "", true).Typed ||
+				advisor.Record(dir, prompt.Session, st.Size, now, prompt.ID, true) != nil {
 				return nil
 			}
 		}
@@ -172,7 +193,7 @@ func runPromptHook(ctx context.Context, args []string, stdin io.Reader, out io.W
 			header = fmt.Sprintf(`Its first lines are "Follows: %s" and "Session: %s".`, parent, prompt.Session)
 		}
 		// Record the advice before it is shown, so the next prompt does not repeat it.
-		_ = advisor.MarkAdvised(dir, prompt.Session, st.Size, now)
+		_ = advisor.MarkAdvised(dir, prompt.Session, st.Size, now, prompt.ID)
 		_ = advisor.SetHandoff(dir, prompt.Session, parent, thread, name)
 
 		kTokens := thousandsK(st.Size)
@@ -195,6 +216,98 @@ func runPromptHook(ctx context.Context, args []string, stdin io.Reader, out io.W
 	})
 	_, _ = out.Write(b)
 	return nil
+}
+
+// runStopHook works as a client's stop hook (Claude Code's Stop), run when the
+// model ends a turn that a person's prompt started. It blocks the end of the
+// turn once, so the model adds the section, when the reply lacks the section
+// the prompt hook asked for. Like the prompt hook, it never fails the turn.
+func runStopHook(ctx context.Context, args []string, stdin io.Reader, out io.Writer) error {
+	flags := flag.NewFlagSet("hook stop", flag.ContinueOnError)
+	configPath := flags.String("config", config.DefaultPath(), "path to the config file")
+	clientName := flags.String("client", defaultClient, "coding agent that runs the hook")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	adapter, err := clientFor(*clientName)
+	if err != nil {
+		fmt.Fprintln(stderr, "jalon:", err)
+		return nil
+	}
+	stopper, ok := adapter.(client.Stopper)
+	if !ok {
+		fmt.Fprintf(stderr, "jalon: %s has no stop hook\n", *clientName)
+		return nil
+	}
+	raw, err := io.ReadAll(io.LimitReader(stdin, 4<<20))
+	if err != nil {
+		return nil
+	}
+	ev, err := stopper.ReadStop(raw)
+	// Blocking once is enough: a model that ignores the reason costs one more
+	// request, never a loop.
+	if err != nil || ev.Blocked || ev.ID == "" || !advisor.SafeSessionID(ev.Session) {
+		return nil
+	}
+
+	b := bounded(ctx, hookTimeout, func() []byte {
+		dir, err := sessionsDir()
+		if err != nil {
+			return nil
+		}
+		// Only a turn the prompt hook saw start from a person's prompt, and
+		// advised at: not one a notice or another session started.
+		st, ok := advisor.Load(dir, ev.Session)
+		if !ok || st.Prompt != ev.ID || st.AdvisedPrompt != ev.ID {
+			return nil
+		}
+		cfg, err := cli.LoadConfig(flags, *configPath)
+		if err != nil || !cfg.Context.Enabled {
+			return nil
+		}
+		// The instruction asks to end the reply with the section, so only the
+		// last message counts.
+		if strings.Contains(ev.LastMessage, "**Jalon**") {
+			return nil
+		}
+		// After a compaction during the turn, the advice is moot.
+		if advisor.Compacted(st.LastAdvised, adapter.ReadTail(ev.Prompt, "", false).Size) {
+			return nil
+		}
+		// A program that runs claude -p reads the last message as its output: a
+		// block would replace it. Only a turn whose prompt a person typed is
+		// blocked; that is looked for only before blocking, since in a program's
+		// session the search reads 8 MB.
+		if !adapter.ReadTail(ev.Prompt, ev.ID, true).Typed {
+			return nil
+		}
+		handoffDir := handoffFolder(ev.Dir)
+		reason := reminderPrefix + ", context at " + thousandsK(st.LastAdvised) +
+			" tokens: your reply did not end with the section asked at the start of this turn. Do not repeat your answer.\n"
+		if written := lastHandoff(handoffDir, st.Proposed+"-"); st.Proposed != "" && written != "" {
+			reason += "The handoff " + filepath.Join(handoffDir, written) + " is already written: do not write another file, give the section with its lines to copy for it.\n"
+		}
+		// One sentence, not the body: the model got the body at the start of the
+		// turn, and Claude Code's terminal prints the whole reason as an error.
+		reason += "Add now, as your last message, that section: a Markdown blockquote starting with **Jalon** — that recommends ONE option, a new session, a handoff written to " +
+			filepath.Join(handoffDir, st.Proposed) + "-<short-slug>.md with the lines to copy, or a " + adapter.Commands().Compact + " line."
+		reply, err := stopper.StopReply(reason, "")
+		if err != nil {
+			return nil
+		}
+		return reply
+	})
+	_, _ = out.Write(b)
+	return nil
+}
+
+// handoffFolder is the handoff folder of the project in dir, relative when the
+// client gave no directory.
+func handoffFolder(dir string) string {
+	if dir == "" {
+		return filepath.Join(".jalon", "handoffs")
+	}
+	return filepath.Join(projectRoot(dir), ".jalon", "handoffs")
 }
 
 // threadRand is where new thread IDs are drawn from; tests replace it.

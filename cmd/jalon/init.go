@@ -25,7 +25,7 @@ var (
 	runClient  = runCommand
 )
 
-// runInit runs "jalon init": it installs Jalon's hook and its status line into
+// runInit runs "jalon init": it installs Jalon's hooks and its status line into
 // the client's settings, or with -mod the client's mod in place of the status
 // line, or removes them all with -uninstall. After an install it prints the
 // advisor's thresholds, which -advise-tokens and -advise-step-tokens set in the
