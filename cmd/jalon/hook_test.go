@@ -600,8 +600,8 @@ func TestHookIsSilentWhenTheAdvisorIsDisabled(t *testing.T) {
 
 func TestHookDeletesOldStateFiles(t *testing.T) {
 	dir, cfg := hookState(t, "s1", 100_000)
-	advisor.Record(dir, "old", 100_000, hookNow.Add(-8*24*time.Hour), false)
-	advisor.Record(dir, "recent", 100_000, hookNow.Add(-6*24*time.Hour), false)
+	advisor.Record(dir, "old", 100_000, hookNow.Add(-8*24*time.Hour), "", false)
+	advisor.Record(dir, "recent", 100_000, hookNow.Add(-6*24*time.Hour), "", false)
 	runPrompt(t, cfg, hookInput("s1", t.TempDir()))
 	if _, ok := advisor.Load(dir, "old"); ok {
 		t.Error("a state file older than 7 days was kept")
@@ -612,8 +612,14 @@ func TestHookDeletesOldStateFiles(t *testing.T) {
 }
 
 func TestHookRejectsUnknownSubcommand(t *testing.T) {
-	if err := runHook(context.Background(), []string{"stop"}, strings.NewReader(""), &bytes.Buffer{}); err == nil {
-		t.Error("an unknown hook name must be a usage error")
+	for _, args := range [][]string{{"frobnicate"}, {}} {
+		err := runHook(context.Background(), args, strings.NewReader(""), &bytes.Buffer{})
+		if err == nil || !strings.Contains(err.Error(), "prompt") || !strings.Contains(err.Error(), "stop") {
+			t.Errorf("%v: err = %v, want a usage error naming prompt and stop", args, err)
+		}
+	}
+	if !strings.Contains(usage, "jalon hook stop [-client name] [-config path]") {
+		t.Error("the usage does not list hook stop with its flags")
 	}
 }
 
@@ -997,6 +1003,257 @@ func TestHookTriesTheFloorAgainWhenTheTranscriptHasNone(t *testing.T) {
 	}
 }
 
+// promptInput is a prompt hook input with a prompt ID.
+func promptInput(session, promptID, cwd string) string {
+	b, _ := json.Marshal(map[string]string{"session_id": session, "prompt_id": promptID, "cwd": cwd, "transcript_path": transcriptFile(session), "hook_event_name": "UserPromptSubmit", "prompt": "hi"})
+	return string(b)
+}
+
+// stopInput is a stop hook input shaped as Claude Code's, read on 2026-10-12.
+func stopInput(session, promptID, cwd, last string, active bool) string {
+	in := map[string]any{"session_id": session, "transcript_path": transcriptFile(session), "cwd": cwd, "hook_event_name": "Stop",
+		"stop_hook_active": active, "last_assistant_message": last, "permission_mode": "default", "effort": "high"}
+	if promptID != "" {
+		in["prompt_id"] = promptID
+	}
+	b, _ := json.Marshal(in)
+	return string(b)
+}
+
+func runPromptAt(t *testing.T, configPath, stdin string, now time.Time) string {
+	t.Helper()
+	var out bytes.Buffer
+	if err := runPromptHook(context.Background(), []string{"-config", configPath}, strings.NewReader(stdin), &out, now); err != nil {
+		t.Fatalf("hook: %v", err)
+	}
+	return out.String()
+}
+
+func runStop(t *testing.T, configPath, stdin string) string {
+	t.Helper()
+	var out bytes.Buffer
+	if err := runStopHook(context.Background(), []string{"-config", configPath}, strings.NewReader(stdin), &out); err != nil {
+		t.Fatalf("stop hook: %v", err)
+	}
+	return out.String()
+}
+
+type stopOutput struct {
+	Decision      string  `json:"decision"`
+	Reason        string  `json:"reason"`
+	SystemMessage *string `json:"systemMessage"`
+}
+
+func parseStop(t *testing.T, raw string) stopOutput {
+	t.Helper()
+	var out stopOutput
+	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		t.Fatalf("output is not JSON: %v\n%s", err, raw)
+	}
+	if out.Decision != "block" {
+		t.Errorf("decision = %q, want block", out.Decision)
+	}
+	return out
+}
+
+func TestPromptHookRecordsThePromptIDs(t *testing.T) {
+	t.Run("threshold crossed", func(t *testing.T) {
+		dir, cfg := hookState(t, "s1", 210_000)
+		if runPrompt(t, cfg, promptInput("s1", "p1", gitRepo(t))) == "" {
+			t.Fatal("no advice")
+		}
+		if st, _ := advisor.Load(dir, "s1"); st.LastAdvised != 210_000 || st.Prompt != "p1" || st.AdvisedPrompt != "p1" {
+			t.Errorf("state = %+v, want last advised 210000, prompt and advised prompt p1", st)
+		}
+	})
+	t.Run("below the threshold", func(t *testing.T) {
+		dir, cfg := hookState(t, "s1", 120_000)
+		if got := runPrompt(t, cfg, promptInput("s1", "p2", gitRepo(t))); got != "" {
+			t.Fatalf("output = %q", got)
+		}
+		if st, _ := advisor.Load(dir, "s1"); st.Prompt != "p2" || st.AdvisedPrompt != "" {
+			t.Errorf("state = %+v, want prompt p2 and no advised prompt", st)
+		}
+	})
+	t.Run("first prompt, no size yet", func(t *testing.T) {
+		dir := useHome(t)
+		if got := runPrompt(t, configWith(t, thresholdsConfig), promptInput("s1", "p1", gitRepo(t))); got != "" {
+			t.Fatalf("output = %q", got)
+		}
+		if st, _ := advisor.Load(dir, "s1"); st.Prompt != "p1" || st.Size != 0 {
+			t.Errorf("state = %+v, want prompt p1 and no size", st)
+		}
+	})
+	t.Run("no size keeps the size and the advice", func(t *testing.T) {
+		dir, cfg := hookState(t, "s1", 210_000)
+		if runPrompt(t, cfg, promptInput("s1", "p1", gitRepo(t))) == "" {
+			t.Fatal("no advice")
+		}
+		// A compaction that gives no size: the next size decides the step reset.
+		appendTranscript(t, "s1", `{"type":"system","subtype":"compact_boundary","compactMetadata":{"trigger":"auto"}}`+"\n")
+		runPrompt(t, cfg, promptInput("s1", "p2", gitRepo(t)))
+		if st, _ := advisor.Load(dir, "s1"); st.Prompt != "p2" || st.Size != 210_000 || st.LastAdvised != 210_000 {
+			t.Errorf("state = %+v, want prompt p2, size and last advised 210000", st)
+		}
+	})
+	t.Run("input without a prompt ID", func(t *testing.T) {
+		dir, cfg := hookState(t, "s1", 210_000)
+		if runPrompt(t, cfg, hookInput("s1", gitRepo(t))) == "" {
+			t.Fatal("no advice")
+		}
+		if b, _ := os.ReadFile(filepath.Join(dir, "s1.json")); strings.Contains(string(b), "prompt") {
+			t.Errorf("state file = %s, want no prompt ID", b)
+		}
+	})
+}
+
+// advisedAt1748 has the prompt hook advise at prompt p1, at 274K tokens and
+// 17:48, as on 2026-10-12, and returns the repository, the config and the
+// proposed handoff name prefix.
+func advisedAt1748(t *testing.T) (repo, cfg, prefix string) {
+	t.Helper()
+	dir, cfg := hookState(t, "s1", 274_000)
+	repo = gitRepo(t)
+	if runPromptAt(t, cfg, promptInput("s1", "p1", repo), time.Date(2026, 10, 12, 17, 48, 0, 0, time.UTC)) == "" {
+		t.Fatal("no advice")
+	}
+	appendTranscript(t, "s1", typedPrompt("p1"), assistantLine(275_000))
+	st, _ := advisor.Load(dir, "s1")
+	if !strings.HasPrefix(st.Proposed, "2026-10-12/1748-") {
+		t.Fatalf("proposed = %q", st.Proposed)
+	}
+	return repo, cfg, st.Proposed
+}
+
+func TestStopHookSectionGiven(t *testing.T) {
+	repo, cfg, _ := advisedAt1748(t)
+	home := os.Getenv("HOME")
+	before := snapshot(t, home)
+	if got := runStop(t, cfg, stopInput("s1", "p1", repo, "Voilà.\n\n> **Jalon** — Compact: …", false)); got != "" {
+		t.Errorf("output = %q, want nothing", got)
+	}
+	if after := snapshot(t, home); after != before {
+		t.Errorf("the stop hook wrote:\nbefore %s\nafter  %s", before, after)
+	}
+}
+
+func TestStopHookSectionMissing(t *testing.T) {
+	repo, cfg, prefix := advisedAt1748(t)
+	state := filepath.Join(os.Getenv("HOME"), ".jalon", "sessions", "s1.json")
+	before, _ := os.ReadFile(state)
+	out := parseStop(t, runStop(t, cfg, stopInput("s1", "p1", repo, "Le fichier de reprise est écrit.", false)))
+	proposed := filepath.Join(repo, ".jalon", "handoffs", prefix) + "-<short-slug>.md"
+	if !strings.HasPrefix(out.Reason, "Jalon: reminder, context at 274K tokens: ") ||
+		!strings.Contains(out.Reason, "Do not repeat your answer") ||
+		!strings.Contains(out.Reason, "a handoff written to "+proposed) ||
+		!strings.Contains(out.Reason, "starting with **Jalon** —") ||
+		// Short: the terminal prints it, and the body was given at the start of the turn.
+		strings.Count(out.Reason, "\n") > 2 || strings.Contains(out.Reason, "first words are") ||
+		strings.Contains(out.Reason, "already written") || strings.Contains(out.Reason, "{") {
+		t.Errorf("reason = %q", out.Reason)
+	}
+	// The notice was shown at the start of the turn.
+	if out.SystemMessage != nil {
+		t.Errorf("systemMessage = %q, want none", *out.SystemMessage)
+	}
+	if after, _ := os.ReadFile(state); string(after) != string(before) {
+		t.Errorf("state changed:\n%s\n%s", before, after)
+	}
+
+	t.Run("handoff written", func(t *testing.T) {
+		written := writeHandoff(t, repo, prefix+"-squad-mr-tour-2.md")
+		out := parseStop(t, runStop(t, cfg, stopInput("s1", "p1", repo, "Le fichier de reprise est écrit.", false)))
+		if !strings.HasPrefix(out.Reason, "Jalon: reminder") ||
+			!strings.Contains(out.Reason, "The handoff "+written+" is already written: do not write another file") {
+			t.Errorf("reason = %q", out.Reason)
+		}
+	})
+}
+
+func TestStopHookNoReminderAfterACompaction(t *testing.T) {
+	repo, cfg, _ := advisedAt1748(t)
+	// Claude Code compacted during the turn: the advice is moot.
+	appendTranscript(t, "s1", `{"type":"system","subtype":"compact_boundary","compactMetadata":{"trigger":"auto","postTokens":22000}}`+"\n", assistantLine(30_000))
+	if got := runStop(t, cfg, stopInput("s1", "p1", repo, "Le fichier de reprise est écrit.", false)); got != "" {
+		t.Errorf("output = %q, want nothing", got)
+	}
+}
+
+func TestStopHookDoesNothing(t *testing.T) {
+	off := "context:\n  enabled: false\n  advise_tokens: 200000\n  advise_step_tokens: 150000\n"
+	tests := map[string]struct {
+		cfg   string // "" for thresholdsConfig
+		stdin func(repo string) string
+	}{
+		"already blocked":          {"", func(repo string) string { return stopInput("s1", "p1", repo, "no section", true) }},
+		"turn not started by them": {"", func(repo string) string { return stopInput("s1", "p5", repo, "no section", false) }},
+		"no prompt ID":             {"", func(repo string) string { return stopInput("s1", "", repo, "no section", false) }},
+		"session never seen":       {"", func(repo string) string { return stopInput("s9", "p1", repo, "no section", false) }},
+		"unsafe session":           {"", func(repo string) string { return stopInput("../s1", "p1", repo, "no section", false) }},
+		"advisor disabled":         {off, func(repo string) string { return stopInput("s1", "p1", repo, "no section", false) }},
+		"config does not parse":    {"listen: [\n", func(repo string) string { return stopInput("s1", "p1", repo, "no section", false) }},
+		"input is not JSON":        {"", func(string) string { return "nope" }},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			// Advised at p1, the reply lacks the section, and the size has grown
+			// past the step: anything but a stop for p1 would block.
+			_, cfg := hookState(t, "s1", 210_000)
+			repo := gitRepo(t)
+			if runPrompt(t, cfg, promptInput("s1", "p1", repo)) == "" {
+				t.Fatal("no advice")
+			}
+			appendTranscript(t, "s1", typedPrompt("p1"), assistantLine(400_000), assistantLine(9_000_000))
+			if tt.cfg != "" {
+				cfg = configWith(t, tt.cfg)
+			}
+			home := os.Getenv("HOME")
+			before := snapshot(t, home)
+			if got := runStop(t, cfg, tt.stdin(repo)); got != "" {
+				t.Errorf("output = %q, want nothing", got)
+			}
+			if after := snapshot(t, home); after != before {
+				t.Errorf("the stop hook wrote:\nbefore %s\nafter  %s", before, after)
+			}
+		})
+	}
+}
+
+func TestStopHookUnknownClientIsSilentAndSaysWhy(t *testing.T) {
+	_, cfg := hookState(t, "s1", 275_000)
+	var errBuf bytes.Buffer
+	old := stderr
+	stderr = &errBuf
+	defer func() { stderr = old }()
+	var out bytes.Buffer
+	args := []string{"-client", "nope", "-config", cfg}
+	if err := runStopHook(context.Background(), args, strings.NewReader(stopInput("s1", "p1", t.TempDir(), "", false)), &out); err != nil || out.Len() != 0 {
+		t.Errorf("err=%v output=%q, want silence", err, out.String())
+	}
+	if !strings.Contains(errBuf.String(), `unknown client "nope"`) || !strings.Contains(errBuf.String(), "claude-code") {
+		t.Errorf("stderr = %q", errBuf.String())
+	}
+	if err := runStopHook(context.Background(), []string{"-bogus"}, strings.NewReader(""), &out); err == nil {
+		t.Error("an invalid flag must be an error, for exit 1")
+	}
+}
+
+// The hooks share bounded: work that outlasts the limit gives no output. The
+// work blocks until released, so the test reads no clock.
+func TestBoundedGivesUpAfterTheLimit(t *testing.T) {
+	release := make(chan struct{})
+	defer close(release)
+	if got := bounded(context.Background(), time.Nanosecond, func() []byte {
+		<-release
+		return []byte("late")
+	}); got != nil {
+		t.Errorf("output = %q, want nothing at the limit", got)
+	}
+	if got := bounded(context.Background(), time.Hour, func() []byte { return []byte("on time") }); string(got) != "on time" {
+		t.Errorf("output = %q, want the work's", got)
+	}
+}
+
 // A program that runs claude -p reads the model's last message as its output:
 // the hooks never advise a session no person typed in.
 func TestProgramsAreNeverAdvised(t *testing.T) {
@@ -1005,22 +1262,22 @@ func TestProgramsAreNeverAdvised(t *testing.T) {
 		cfg := configWith(t, thresholdsConfig)
 		repo := gitRepo(t)
 		appendTranscript(t, "s1", programPrompt("p6"), assistantLine(startSize), programPrompt("p7"), assistantLine(300_000))
-		if got := runPrompt(t, cfg, hookInput("s1", repo)); got != "" {
+		if got := runPrompt(t, cfg, promptInput("s1", "p8", repo)); got != "" {
 			t.Errorf("output = %q, want nothing", got)
 		}
-		if st, _ := advisor.Load(dir, "s1"); st.Size != 300_000 || st.LastAdvised != 0 || st.Typed {
-			t.Errorf("state = %+v, want the size recorded, no advice", st)
+		if st, _ := advisor.Load(dir, "s1"); st.Size != 300_000 || st.Prompt != "p8" || st.LastAdvised != 0 || st.Typed {
+			t.Errorf("state = %+v, want the size and the prompt ID recorded, no advice", st)
 		}
 		if _, err := os.Stat(filepath.Join(repo, ".jalon")); err == nil {
 			t.Error("a handoff folder was created")
 		}
 
 		// A person then types in it: the prompt counts from the next one on.
-		if got := runPrompt(t, cfg, hookInput("s1", repo)); got != "" {
+		if got := runPrompt(t, cfg, promptInput("s1", "p9", repo)); got != "" {
 			t.Errorf("output at the typed prompt = %q, want nothing: it is not in the transcript yet", got)
 		}
 		appendTranscript(t, "s1", typedPrompt("p9"), assistantLine(305_000))
-		if got := runPrompt(t, cfg, hookInput("s1", repo)); !strings.Contains(got, "305K") {
+		if got := runPrompt(t, cfg, promptInput("s1", "p10", repo)); !strings.Contains(got, "305K") {
 			t.Errorf("output after the typed prompt = %q, want the advice", got)
 		}
 	})
@@ -1030,11 +1287,38 @@ func TestProgramsAreNeverAdvised(t *testing.T) {
 		cfg := configWith(t, thresholdsConfig)
 		// The typed prompt is out of the part read, but the state recorded it.
 		appendTranscript(t, "s1", assistantLine(startSize), assistantLine(300_000))
-		if err := advisor.Record(dir, "s1", 100_000, hookNow, true); err != nil {
+		if err := advisor.Record(dir, "s1", 100_000, hookNow, "p1", true); err != nil {
 			t.Fatal(err)
 		}
-		if got := runPrompt(t, cfg, hookInput("s1", gitRepo(t))); !strings.Contains(got, "300K") {
+		if got := runPrompt(t, cfg, promptInput("s1", "p2", gitRepo(t))); !strings.Contains(got, "300K") {
 			t.Errorf("output = %q, want the advice", got)
+		}
+	})
+
+	// A program resumes a session a person typed in: the prompt hook advises,
+	// and the program's turn must still end on its own last message.
+	t.Run("turn started by a program", func(t *testing.T) {
+		_, cfg := hookState(t, "s1", 210_000)
+		repo := gitRepo(t)
+		if runPrompt(t, cfg, promptInput("s1", "p6", repo)) == "" {
+			t.Fatal("no advice")
+		}
+		appendTranscript(t, "s1", programPrompt("p6"), assistantLine(212_000))
+		if got := runStop(t, cfg, stopInput("s1", "p6", repo, "The task's output.", false)); got != "" {
+			t.Errorf("output = %q, want nothing: the program's output is the last message", got)
+		}
+	})
+
+	t.Run("prompt entry out of reach", func(t *testing.T) {
+		_, cfg := hookState(t, "s1", 210_000)
+		repo := gitRepo(t)
+		if runPrompt(t, cfg, promptInput("s1", "p1", repo)) == "" {
+			t.Fatal("no advice")
+		}
+		// The transcript holds no entry for p1, only the earlier typed p0.
+		appendTranscript(t, "s1", assistantLine(212_000))
+		if got := runStop(t, cfg, stopInput("s1", "p1", repo, "Done.", false)); got != "" {
+			t.Errorf("output = %q, want nothing", got)
 		}
 	})
 }

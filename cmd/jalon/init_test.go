@@ -89,12 +89,14 @@ func TestInitInstallsOnceWithABackup(t *testing.T) {
 
 	out := runInitOK(t, "-settings", path)
 	if !strings.Contains(out, "prompt hook: added "+testExe+" hook prompt --client claude-code") ||
+		!strings.Contains(out, "stop hook: added "+testExe+" hook stop --client claude-code") ||
 		!strings.Contains(out, "status line: added "+testExe+" statusline --client claude-code") ||
 		!strings.Contains(out, "sessions started from now on") {
 		t.Errorf("output = %q", out)
 	}
 	installed, _ := os.ReadFile(path)
-	if !strings.Contains(string(installed), testExe+" hook prompt") || !strings.Contains(string(installed), testExe+" statusline") ||
+	if !strings.Contains(string(installed), testExe+" hook prompt") || !strings.Contains(string(installed), testExe+" hook stop") ||
+		!strings.Contains(string(installed), testExe+" statusline") ||
 		!strings.Contains(string(installed), "rtk hook claude") {
 		t.Errorf("settings = %s", installed)
 	}
@@ -161,7 +163,7 @@ func TestInitUninstall(t *testing.T) {
 	}
 	runInitOK(t, "-settings", path)
 	out := runInitOK(t, "-settings", path, "-uninstall")
-	if !strings.Contains(out, "prompt hook: removed") || !strings.Contains(out, "status line: removed") ||
+	if !strings.Contains(out, "prompt hook: removed") || !strings.Contains(out, "stop hook: removed") || !strings.Contains(out, "status line: removed") ||
 		!strings.Contains(out, "mod: not installed (claude not found)") {
 		t.Errorf("output = %q", out)
 	}
@@ -276,7 +278,7 @@ func TestInitRecordsThePathEntryOfTheRunningBinary(t *testing.T) {
 			if strings.ContainsAny(want, " ") {
 				want = "'" + want + "'"
 			}
-			if !strings.Contains(string(b), want+" hook prompt --client claude-code") {
+			if !strings.Contains(string(b), want+" hook prompt --client claude-code") || !strings.Contains(string(b), want+" hook stop --client claude-code") {
 				t.Errorf("settings do not run %s:\n%s", want, b)
 			}
 		})

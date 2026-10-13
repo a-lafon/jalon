@@ -15,11 +15,12 @@ const usage = `jalon - a context advisor for AI coding agents
 Usage:
   jalon init [-statusline=false | -mod] [-uninstall] [-dry-run] [-client name] [-settings path]
              [-advise-tokens n] [-advise-step-tokens n]
-                                              install the prompt hook and the status line, or the mod, print or set the thresholds
+                                              install the hooks and the status line, or the mod, print or set the thresholds
   jalon context-report [-since 7d] [-transcripts dir] [-split t1,t2] [-config path]
                                               compare reset advice with the resets you did
   jalon statusline [-client name] [-config path]  print the context size for a status line (reads its JSON on stdin)
   jalon hook prompt [-client name] [-config path] prompt hook: advise a context reset (reads its JSON on stdin)
+  jalon hook stop [-client name] [-config path]   stop hook: add the advice at the end of a turn (reads its JSON on stdin)
   jalon version                               print the version, commit and build date (also --version)
 
 Without -config, Jalon reads ~/.jalon/config.yaml, or uses its defaults when

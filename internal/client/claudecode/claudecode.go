@@ -16,7 +16,10 @@ import (
 // Adapter implements client.Adapter for Claude Code.
 type Adapter struct{}
 
-var _ client.Adapter = Adapter{}
+var (
+	_ client.Adapter = Adapter{}
+	_ client.Stopper = Adapter{}
+)
 
 func (Adapter) Name() string { return "claude-code" }
 
@@ -33,6 +36,7 @@ var notHumanPrefixes = []string{
 func (Adapter) ReadPrompt(stdin []byte) (client.Prompt, error) {
 	var in struct {
 		SessionID      string `json:"session_id"`
+		PromptID       string `json:"prompt_id"`
 		Cwd            string `json:"cwd"`
 		Prompt         string `json:"prompt"`
 		TranscriptPath string `json:"transcript_path"`
@@ -40,20 +44,45 @@ func (Adapter) ReadPrompt(stdin []byte) (client.Prompt, error) {
 	if err := json.NewDecoder(bytes.NewReader(stdin)).Decode(&in); err != nil {
 		return client.Prompt{}, err
 	}
-	// cwd follows the agent's cd, so the handoff folder would end up wherever
-	// the session wandered. Claude Code sets CLAUDE_PROJECT_DIR for hooks to the
-	// directory the session started in.
-	dir := os.Getenv("CLAUDE_PROJECT_DIR")
-	if dir == "" {
-		dir = in.Cwd
-	}
 	return client.Prompt{
 		Session: in.SessionID,
-		Dir:     dir,
+		ID:      in.PromptID,
+		Dir:     projectDir(in.Cwd),
 		Human:   isHuman(in.Prompt),
 		Text:    in.Prompt,
 		Ref:     in.TranscriptPath,
 	}, nil
+}
+
+// ReadStop reads the Stop hook input. stop_hook_active is true when a Stop
+// hook already blocked this turn.
+func (Adapter) ReadStop(stdin []byte) (client.Stop, error) {
+	var in struct {
+		SessionID            string `json:"session_id"`
+		PromptID             string `json:"prompt_id"`
+		Cwd                  string `json:"cwd"`
+		TranscriptPath       string `json:"transcript_path"`
+		StopHookActive       bool   `json:"stop_hook_active"`
+		LastAssistantMessage string `json:"last_assistant_message"`
+	}
+	if err := json.NewDecoder(bytes.NewReader(stdin)).Decode(&in); err != nil {
+		return client.Stop{}, err
+	}
+	return client.Stop{
+		Prompt:      client.Prompt{Session: in.SessionID, ID: in.PromptID, Dir: projectDir(in.Cwd), Ref: in.TranscriptPath},
+		Blocked:     in.StopHookActive,
+		LastMessage: in.LastAssistantMessage,
+	}, nil
+}
+
+// projectDir is the directory the session started in. cwd follows the agent's
+// cd, so the handoff folder would end up wherever the session wandered; Claude
+// Code sets CLAUDE_PROJECT_DIR for hooks to the directory the session started in.
+func projectDir(cwd string) string {
+	if dir := os.Getenv("CLAUDE_PROJECT_DIR"); dir != "" {
+		return dir
+	}
+	return cwd
 }
 
 func isHuman(prompt string) bool {
@@ -66,7 +95,9 @@ func isHuman(prompt string) bool {
 	return true
 }
 
-func (Adapter) ReadTail(p client.Prompt, typed bool) client.Tail { return readTail(p.Ref, typed) }
+func (Adapter) ReadTail(p client.Prompt, promptID string, typed bool) client.Tail {
+	return readTail(p.Ref, promptID, typed)
+}
 
 func (Adapter) ContextFloor(p client.Prompt) (int, bool) { return contextFloor(p.Ref) }
 
@@ -75,16 +106,31 @@ func (Adapter) Commands() client.Commands {
 }
 
 func (Adapter) Reply(userMessage, modelContext string) ([]byte, error) {
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(map[string]any{
+	return encode(map[string]any{
 		"systemMessage": userMessage,
 		"hookSpecificOutput": map[string]any{
 			"hookEventName":     "UserPromptSubmit",
 			"additionalContext": modelContext,
 		},
-	}); err != nil {
+	})
+}
+
+// StopReply makes Claude Code go on with the turn: the reason reaches the model
+// as a meta user message, and the terminal also prints it as a hook error.
+func (Adapter) StopReply(reason, userMessage string) ([]byte, error) {
+	out := map[string]any{"decision": "block", "reason": reason}
+	if userMessage != "" {
+		out["systemMessage"] = userMessage
+	}
+	return encode(out)
+}
+
+// encode writes v as one line of JSON, leaving <, > and & as they are.
+func encode(v any) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil
