@@ -130,7 +130,7 @@ func runPromptHook(ctx context.Context, args []string, stdin io.Reader, out io.W
 				_ = advisor.SetHandoff(dir, prompt.Session, name, threadOf(name), "")
 			}
 		}
-		st, ok := measure(dir, adapter, prompt, adapter.ReadTail(prompt, "", false).Size, cfg, now)
+		st, ok := measure(dir, adapter, prompt, adapter.ReadTail(prompt, "", false), cfg, now)
 		if !ok {
 			return nil
 		}
@@ -243,7 +243,7 @@ func runStopHook(ctx context.Context, args []string, stdin io.Reader, out io.Wri
 			return reply
 		}
 
-		st, ok = measure(dir, adapter, ev.Prompt, adapter.ReadTail(ev.Prompt, "", false).Size, cfg, now)
+		st, ok = measure(dir, adapter, ev.Prompt, adapter.ReadTail(ev.Prompt, "", false), cfg, now)
 		if !ok || !typed() {
 			return nil
 		}
@@ -264,13 +264,13 @@ func runStopHook(ctx context.Context, args []string, stdin io.Reader, out io.Wri
 	return nil
 }
 
-// measure records size, the context size of the turn of p, in the session's
-// state, with the floor when the state holds none, and runs the advisor. It
-// returns the state, and true when a reset is advised.
-func measure(dir string, adapter client.Adapter, p client.Prompt, size int, cfg config.Config, now time.Time) (advisor.Session, bool) {
+// measure records the context size of the turn of p in the session's state,
+// read from the transcript's tail, with the floor when the state holds none,
+// and runs the advisor. It returns the state, and true when a reset is advised.
+func measure(dir string, adapter client.Adapter, p client.Prompt, tail client.Tail, cfg config.Config, now time.Time) (advisor.Session, bool) {
 	// The size is read from the client's own record of the conversation, so
 	// the hook needs no status line.
-	if size <= 0 {
+	if tail.Size <= 0 {
 		// A session's first prompt has no size yet: its ID still tells the stop
 		// hook its turn.
 		if p.ID != "" {
@@ -278,7 +278,7 @@ func measure(dir string, adapter client.Adapter, p client.Prompt, size int, cfg 
 		}
 		return advisor.Session{}, false
 	}
-	if advisor.Record(dir, p.Session, size, now, p.ID, false) != nil {
+	if advisor.Record(dir, p.Session, tail.Size, now, p.ID, tail.Typed) != nil {
 		return advisor.Session{}, false
 	}
 	st, ok := advisor.Load(dir, p.Session)
