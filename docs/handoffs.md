@@ -1,6 +1,6 @@
 # Handoffs
 
-A handoff is a file the session's own model writes when you take the advice to carry a task over to a new conversation: the goal, the decisions and why, what was dropped and why, the current state, your latest request and the answer that reply gives it, the files involved, the next steps and the pitfalls, and the facts the next steps need from outside sources such as tickets, docs or logs, since a new session cannot see them. No raw tool output. You can read and edit it before you resume. It is written in the reply to the prompt that crossed the threshold: a message you send after it is not in it, so add that request to the resume line, or ask the model to update the handoff first.
+A handoff is a file the session's own model writes when you take the advice to carry a task over to a new conversation: the goal, the decisions and why, what was dropped and why, the current state, your latest request and the answer that reply gives it, the files involved, the next steps and the pitfalls, and the facts the next steps need from outside sources such as tickets, docs or logs, since a new session cannot see them. No raw tool output. The next steps are written as proposals to confirm with you, not orders: a push, a pull or merge request, an API call or a message to a person or another session is never listed as a thing to do, at most as waiting for your OK. You can read and edit it before you resume. It is written in the reply to the prompt that crossed the threshold: a message you send after it is not in it, so ask the model to update the handoff first, or add that request yourself after the resume line Jalon gives, which names none.
 
 ## Where they go
 
@@ -14,7 +14,7 @@ The name is `<time>-<thread>-<slug>`: the time of the advice, the thread ID, and
 
 ## Resuming
 
-The advice gives you the lines to copy: `/clear`, then `@` and the handoff's full path, followed by a request to resume from it. In a session driven by a skill or command, the resume line re-invokes it, followed by the handoff's path as plain text. You can also resume in a new window.
+The advice gives you the lines to copy: `/clear`, then `@` and the handoff's full path, followed by a request to resume from it that names no task or next step, so the new session starts from the handoff, not from a task. In a session driven by a skill or command, the resume line re-invokes it, followed by the handoff's path as plain text and the same request. You can also resume in a new window.
 
 ## Threads
 
