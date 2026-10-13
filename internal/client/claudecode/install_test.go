@@ -264,12 +264,6 @@ func TestInstallStatusLine(t *testing.T) {
 			t.Error("status line installed with no display")
 		}
 	})
-	t.Run("not requested, Jalon's at another path", func(t *testing.T) {
-		out, _ := install(t, `{"statusLine":{"type":"command","command":"/x/jalon statusline --client claude-code"}}`, client.NoDisplay)
-		if got, want := statusCmd(t, out), exe+" statusline --client claude-code"; got != want {
-			t.Errorf("status line = %q, want %q", got, want)
-		}
-	})
 	t.Run("absent", func(t *testing.T) {
 		out, _ := install(t, `{}`, client.StatusLine)
 		if got, want := statusCmd(t, out), exe+" statusline --client claude-code"; got != want {

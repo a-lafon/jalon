@@ -13,8 +13,9 @@ import (
 const usage = `jalon - a context advisor for AI coding agents
 
 Usage:
-  jalon init [-statusline=false | -mod] [-uninstall] [-dry-run] [-client name]
-             [-settings path] [-advise-tokens n] [-advise-step-tokens n]
+  jalon init [-statusline=false | -mod] [-skill] [-uninstall] [-dry-run]
+             [-client name] [-settings path] [-advise-tokens n]
+             [-advise-step-tokens n]
       install the hooks and the status line, or the mod; print or set the
       thresholds
   jalon context-report [-since 7d] [-transcripts dir] [-split t1,t2]
