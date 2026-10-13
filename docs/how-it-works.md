@@ -22,6 +22,8 @@ At the first prompt past the threshold, the terminal shows a one-line notice, `J
 2. a **handoff**: the model writes a file in `.jalon/handoffs/` and gives you the lines to resume from it (see [handoffs](handoffs.md));
 3. a **`/compact` line** naming what to keep and what to drop.
 
+While background work the model started that will report back (agents, background commands) is still running, the model is asked to recommend a `/compact` line rather than a new session or `/clear`; that line keeps the running work, what to do with its result, and the proposed handoff's path and first lines, so a handoff you ask for once the work has reported keeps its name and its place in the thread.
+
 You run the command; Jalon never does.
 
 ## Status line
