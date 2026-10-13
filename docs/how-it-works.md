@@ -4,7 +4,7 @@ Jalon cannot reset a conversation itself, since editing history would break the 
 
 ## When it advises
 
-The prompt hook reads the context size from the conversation's transcript, and the **starting size** (the floor) from the conversation's first request, once. The floor is what a reset cannot remove: the system prompt, the tool definitions (MCP included), the agent and skill listings. A conversation that starts at 220K is not advised at its first prompt.
+The hooks read the context size from the conversation's transcript, and the **starting size** (the floor) from the conversation's first request, once. The floor is what a reset cannot remove: the system prompt, the tool definitions (MCP included), the agent and skill listings. A conversation that starts at 220K is not advised at its first prompt.
 
 - `advise_tokens` is the growth above the floor at which the first advice comes (200K by default).
 - `advise_step_tokens` is how much the context must grow after an advice before the next one (150K by default). It counts from the size at the last advice.
@@ -14,9 +14,12 @@ The defaults are a judgment, not a measurement: the [replay test](cost-and-quali
 
 The advice comes only on prompts you type, not on messages from other sessions or background tasks, and only in a session a person typed in: a script or an agent that runs `claude -p` reads the model's last message as its output, so Jalon leaves the sessions it starts alone. It tells them apart from the transcript, where Claude Code marks a typed prompt; a session counts as typed in from the prompt after the first one you type. Known limit: a program that resumes a session you typed in, with `claude -p --resume`, is not detected, since the session stays recorded as typed in, so its prompts can get the prompt hook's advice; the stop hook checks the turn's own prompt and leaves such a turn alone. The hooks work in the terminal and in the VS Code extension, need no other process, never block your prompt, and give up after 500 ms.
 
-Two hooks give the advice. The **prompt hook** runs before each prompt you type is sent, and adds the advice to the model's context. The **stop hook** runs when the model ends a turn you started: when the prompt hook advised at the start of the turn, and the reply does not end with the Jalon section, it reminds the model once, unless Claude Code compacted the conversation during the turn, so the advice shows even where the client shows no notice, as in the VS Code extension.
+Two hooks give the advice. The **prompt hook** runs before each prompt you type is sent, and adds the advice to the model's context. The **stop hook** runs when the model ends a turn you started, and acts in two cases:
 
-It blocks the end of the turn once: the model goes on in the same turn, with one more request, and adds the section after the reply you already see; it is never asked to repeat its answer.
+- the context crossed the threshold during the turn: it gives the advice then, instead of at your next prompt, which can come many requests later;
+- the prompt hook advised at the start of the turn, and the reply does not end with the Jalon section: it reminds the model once, unless Claude Code compacted the conversation during the turn, so the advice shows even where the client shows no notice, as in the VS Code extension.
+
+In both cases it blocks the end of the turn once: the model goes on in the same turn, with one more request, and adds the section after the reply you already see; it is never asked to repeat its answer. The stop hook reads the size from the transcript, where Claude Code has not yet written the turn's last request when the hook runs: a crossing that only the last request shows is advised at your next prompt instead.
 
 ## What you see
 
@@ -27,6 +30,8 @@ At the first prompt past the threshold, the terminal shows a one-line notice, `J
 3. a **`/compact` line** naming what to keep and what to drop.
 
 While background work the model started that will report back (agents, background commands) is still running, the model is asked to recommend a `/compact` line rather than a new session or `/clear`; that line keeps the running work, what to do with its result, and the proposed handoff's path and first lines, so a handoff you ask for once the work has reported keeps its name and its place in the thread.
+
+When the threshold is crossed during a turn, the section comes as a message of its own after the reply, and the terminal shows `Jalon: context at 296K tokens, a reset proposal follows.` The terminal also shows what the stop hook asked the model, labelled `Stop hook error`, and `Stop hook error occurred` below the prompt: Claude Code's wording for a hook that makes the model go on, not an error of Jalon.
 
 You run the command; Jalon never does.
 

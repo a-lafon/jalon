@@ -53,7 +53,7 @@ Jalon advises; you act. It never:
 
 It writes only:
 
-- **the advice**, added to the model's context by the prompt hook, on a prompt you typed, when the threshold is crossed; or by the stop hook at the end of a turn you started, which makes the model go on once to add the section when the reply left out the section asked for. Only a session you typed in gets it: a session a program started with `claude -p` does not, but a program that resumes a session you typed in is not detected by the prompt hook;
+- **the advice**, added to the model's context by the prompt hook, on a prompt you typed, when the threshold is crossed; or by the stop hook at the end of a turn you started, which makes the model go on once to add the section: when the threshold was crossed during the turn, or when the reply left out the section asked for. Only a session you typed in gets it: a session a program started with `claude -p` does not, but a program that resumes a session you typed in is not detected by the prompt hook;
 - **`.jalon/handoffs/`** in your project, with its `.gitignore`; the model writes the handoff files when you take that option;
 - **`~/.claude/settings.json`**, only when you run `jalon init`, with a `.jalon.bak` backup;
 - **`~/.jalon/`**: its session state, and its config when `jalon init` sets a threshold.
