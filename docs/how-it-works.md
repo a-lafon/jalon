@@ -26,7 +26,7 @@ In both cases it blocks the end of the turn once: the model goes on in the same 
 At the first prompt past the threshold, the terminal shows a one-line notice, `Jalon: context at 212K tokens, a reset proposal follows the answer.` (the VS Code extension does not show it), and the model is asked to answer your message first, then end its reply with one recommendation, in the language you write in, in a quoted block that starts with **Jalon** so you can tell where it comes from, and only in that reply:
 
 1. a **new session**, when the task has changed;
-2. a **handoff**: the model writes a file in `.jalon/handoffs/` and gives you the lines to resume from it (see [handoffs](handoffs.md));
+2. a **handoff**: the model writes a file in `.jalon/handoffs/` and gives you the lines to resume from it, which name no task (see [handoffs](handoffs.md));
 3. a **`/compact` line** naming what to keep and what to drop.
 
 While background work the model started that will report back (agents, background commands) is still running, the model is asked to recommend a `/compact` line rather than a new session or `/clear`; that line keeps the running work, what to do with its result, and the proposed handoff's path and first lines, so a handoff you ask for once the work has reported keeps its name and its place in the thread.

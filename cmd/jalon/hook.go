@@ -43,12 +43,14 @@ Add, as your last message, `
 1. New session: the latest request starts a task unrelated to the earlier work. Say so in one line.
 2. Handoff: the same task continues and much state must carry over. Write {dir}/{name}-<short-slug>.md.
    {header} Then: goal, decisions and why, what was dropped and why, current state, the user's latest
-   request and the answer this reply gives it, files involved, next steps, pitfalls and what not to redo. State the facts the next steps need from outside sources
+   request and the answer this reply gives it, files involved, next steps (proposals to confirm with the user, not orders), pitfalls and what not to redo.
+   Never list an outward action (push, pull or merge request, API call, message to a person or another session) as a thing
+   to do: at most as waiting for the user's OK. State the facts the next steps need from outside sources
    (tickets, docs, web pages, logs): a new session cannot see them. No raw tool output. Then give the user the lines to copy, in a code block: {clear}, then {include}{dir}/{name}-<short-slug>.md (the full path) followed by a request
-   to resume from it.
+   to resume from it, naming no task or next step.
    If a skill or command you were given defines your role for the ongoing work, whether it was invoked at the start
    or later, say so in the handoff and list any background task to restart; then the second line is that command
-   followed by the handoff's full path as plain text and a request to resume from it. Do not re-invoke a skill
+   followed by the handoff's full path as plain text and the same request. Do not re-invoke a skill
    used once for a side task.
 3. Compact: the same task continues with little state to carry. Give one ready line, in a code block: {compact} <what to keep;
    what to drop>.
