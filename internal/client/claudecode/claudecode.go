@@ -104,8 +104,15 @@ func (Adapter) ReadTail(p client.Prompt, promptID string, typed bool) client.Tai
 
 func (Adapter) ContextFloor(p client.Prompt) (int, bool) { return contextFloor(p.Ref) }
 
-func (Adapter) Commands() client.Commands {
-	return client.Commands{Clear: "/clear", Compact: "/compact", Include: "@"}
+func (a Adapter) Commands() client.Commands {
+	cmds := client.Commands{Clear: "/clear", Compact: "/compact", Include: "@"}
+	// /jalon resume is offered only when the skill jalon init wrote is there.
+	if path, err := a.SkillPath(); err == nil {
+		if b, err := os.ReadFile(path); err == nil && a.OwnsSkill(b) {
+			cmds.Resume = "/jalon resume"
+		}
+	}
+	return cmds
 }
 
 func (Adapter) Reply(userMessage, modelContext string) ([]byte, error) {

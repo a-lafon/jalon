@@ -68,6 +68,9 @@ type Commands struct {
 	// Include is the prefix that attaches a file to a prompt, followed by its
 	// absolute path, e.g. "@".
 	Include string
+	// Resume resumes from a handoff, followed by its absolute path, e.g.
+	// "/jalon resume"; "" when the client has no such command installed.
+	Resume string
 }
 
 // Adapter is everything Jalon needs from one client.
