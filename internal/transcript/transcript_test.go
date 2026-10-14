@@ -374,6 +374,16 @@ func TestResumeIsTheFirstHumanPrompt(t *testing.T) {
 		t.Errorf("resume = %+v", c.Resume)
 	}
 
+	// /jalon resume <path>, as Claude Code stores a skill command.
+	skill := []string{
+		humanText("2026-10-06T08:00:00Z", "<command-message>jalon</command-message>\n<command-name>/jalon</command-name>\n<command-args>resume "+path+"</command-args>"),
+		assistant("2026-10-06T08:00:01Z", "m1", 1, 45000, 0, 5),
+	}
+	c, err = NewReader().Read("mem", strings.NewReader(strings.Join(skill, "\n")))
+	if err != nil || c.Resume == nil || c.Resume.Path != path {
+		t.Errorf("skill resume = %+v, err %v", c.Resume, err)
+	}
+
 	// A path quoted in a later prompt is not a resume.
 	later := []string{
 		humanText("2026-10-06T08:00:00Z", "hello"),

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/a-lafon/jalon/internal/advisor"
+	"github.com/a-lafon/jalon/internal/client/claudecode"
 )
 
 // TestMain lifts the time limits of the hook and the status line: a test's
@@ -328,6 +329,27 @@ func gitRepo(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return dir
+}
+
+func TestHookResumesWithTheSkillWhenInstalled(t *testing.T) {
+	_, cfg := hookState(t, "s1", 212_000)
+	repo := gitRepo(t)
+	skill := filepath.Join(os.Getenv("HOME"), ".claude", "skills", "jalon", "SKILL.md")
+	if err := os.MkdirAll(filepath.Dir(skill), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(skill, claudecode.Adapter{}.Skill(), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var out hookOutput
+	if err := json.Unmarshal([]byte(runPrompt(t, cfg, hookInput("s1", repo))), &out); err != nil {
+		t.Fatal(err)
+	}
+	ctxt := out.HookSpecificOutput.AdditionalContext
+	if !regexp.MustCompile(`then /jalon resume `+regexp.QuoteMeta(repo)+`/\.jalon/handoffs/2026-10-12/0900-[0-9a-z]{8}-<short-slug>\.md \(the full path\), with nothing after it\.`).MatchString(ctxt) ||
+		strings.Contains(ctxt, "then @") || strings.Contains(ctxt, "{") {
+		t.Errorf("additionalContext = %q", ctxt)
+	}
 }
 
 func TestHookAdvisesWhenTheThresholdIsCrossed(t *testing.T) {
@@ -794,6 +816,16 @@ func TestHookThreadsHandoffs(t *testing.T) {
 		ctxt := adviseAt(t, cfg, "s2", repo, "@"+path+" resume from it", 212_000, hookNow)
 		if _, id := thread(t, ctxt); id != "r4sefxw4" ||
 			!strings.Contains(ctxt, `Its first lines are "Follows: `+parent+`" and "Session: s2".`) {
+			t.Errorf("instruction = %q", ctxt)
+		}
+	})
+
+	t.Run("resume with the skill", func(t *testing.T) {
+		useHome(t)
+		repo, cfg := gitRepo(t), configWith(t, thresholdsConfig)
+		path := writeHandoff(t, repo, parent)
+		ctxt := adviseAt(t, cfg, "s2", repo, "/jalon resume "+path, 212_000, hookNow)
+		if _, id := thread(t, ctxt); id != "r4sefxw4" || !strings.Contains(ctxt, `"Follows: `+parent+`"`) {
 			t.Errorf("instruction = %q", ctxt)
 		}
 	})

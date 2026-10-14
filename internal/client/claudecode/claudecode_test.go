@@ -2,6 +2,8 @@ package claudecode
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/a-lafon/jalon/internal/client"
@@ -55,9 +57,34 @@ func TestHumanDetection(t *testing.T) {
 }
 
 func TestCommands(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
 	want := client.Commands{Clear: "/clear", Compact: "/compact", Include: "@"}
-	if got := (Adapter{}).Commands(); got != want {
-		t.Errorf("commands = %+v, want %+v", got, want)
+	path := filepath.Join(home, ".claude", "skills", "jalon", "SKILL.md")
+	for _, tt := range []struct {
+		name    string
+		content []byte // nil: no skill file
+		resume  string
+	}{
+		{"no skill", nil, ""},
+		{"someone else's skill", []byte("---\nname: jalon\n---\n"), ""},
+		{"jalon's skill", skill, "/jalon resume"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.content != nil {
+				if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, tt.content, 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			w := want
+			w.Resume = tt.resume
+			if got := (Adapter{}).Commands(); got != w {
+				t.Errorf("commands = %+v, want %+v", got, w)
+			}
+		})
 	}
 }
 
