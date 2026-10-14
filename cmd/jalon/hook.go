@@ -31,8 +31,8 @@ var hookTimeout = 500 * time.Millisecond
 // the advice cannot drift between them. {tokens} is filled in the openings;
 // {dir} (the absolute handoff folder), {name} (the handoff file name prefix)
 // and {header} (the handoff's first lines) in the body, and so are the
-// client's commands: {clear}, {compact} and {include}, the prefix that
-// attaches a file.
+// client's commands: {clear}, {compact}, and {resume}, the line that resumes
+// from the handoff (see resumeLine).
 const (
 	promptOpening = `Jalon: this conversation holds about {tokens}K tokens of context. Answer the user's message first.
 Then end your reply with `
@@ -46,11 +46,10 @@ Add, as your last message, `
    request and the answer this reply gives it, files involved, next steps (proposals to confirm with the user, not orders), pitfalls and what not to redo.
    Never list an outward action (push, pull or merge request, API call, message to a person or another session) as a thing
    to do: at most as waiting for the user's OK. State the facts the next steps need from outside sources
-   (tickets, docs, web pages, logs): a new session cannot see them. No raw tool output. Then give the user the lines to copy, in a code block: {clear}, then {include}{dir}/{name}-<short-slug>.md (the full path) followed by a request
-   to resume from it, naming no task or next step.
+   (tickets, docs, web pages, logs): a new session cannot see them. No raw tool output. Then give the user the lines to copy, in a code block: {clear}, then {resume}
    If a skill or command you were given defines your role for the ongoing work, whether it was invoked at the start
    or later, say so in the handoff and list any background task to restart; then the second line is that command
-   followed by the handoff's full path as plain text and the same request. Do not re-invoke a skill
+   followed by the handoff's full path as plain text and ` + resumeRequest + `. Do not re-invoke a skill
    used once for a side task.
 3. Compact: the same task continues with little state to carry. Give one ready line, in a code block: {compact} <what to keep;
    what to drop>.
@@ -60,6 +59,23 @@ Recommend a compact whose line keeps the running work, what to do with its resul
 of option 2; add one line saying the user can ask for that handoff once the work has reported.
 Keep the section under 10 lines, apart from the handoff file. Give it in this reply only: do not repeat it in later replies.`
 )
+
+// resumeRequest is what follows the handoff's path on the resume line. A new
+// session told only to resume checks again the state the handoff gives and
+// starts on its next step, which costs requests the handoff was written to save.
+const resumeRequest = `a request, in the user's language,
+   to read it, sum up its goal, state and next step in three lines, then wait for the user's request without checking
+   again the state it describes; the request names no task or next step`
+
+// resumeLine is the line that resumes from the handoff: the client's resume
+// command with the path when it has one, which does what resumeRequest asks,
+// else the path attached and resumeRequest.
+func resumeLine(cmds client.Commands) string {
+	if cmds.Resume != "" {
+		return cmds.Resume + " {dir}/{name}-<short-slug>.md (the full path), with nothing after it."
+	}
+	return cmds.Include + "{dir}/{name}-<short-slug>.md (the full path) followed by " + resumeRequest + "."
+}
 
 // reminderPrefix starts the stop hook's reason when the reply lacks the section
 // asked at the start of the turn. The context report tells it from an advice
@@ -352,14 +368,15 @@ func handoffHeader(parent, session string) string {
 // handoffDir, with the client's commands.
 func fillBody(adapter client.Adapter, handoffDir, name, header string) string {
 	cmds := adapter.Commands()
+	// {resume} goes first: the line it puts in holds {dir} and {name}.
+	body := strings.ReplaceAll(instructionBody, "{resume}", resumeLine(cmds))
 	return strings.NewReplacer(
 		"{dir}", handoffDir,
 		"{name}", name,
 		"{header}", header,
 		"{clear}", cmds.Clear,
 		"{compact}", cmds.Compact,
-		"{include}", cmds.Include,
-	).Replace(instructionBody)
+	).Replace(body)
 }
 
 // threadRand is where new thread IDs are drawn from; tests replace it.
