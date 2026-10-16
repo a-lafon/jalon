@@ -453,8 +453,9 @@ func TestStartingSizeListsTenProjects(t *testing.T) {
 func TestContextReportRejectsBadFlags(t *testing.T) {
 	configPath := configWith(t, "")
 	for name, args := range map[string][]string{
-		"bad split":  {"-config", configPath, "-split", "tomorrow-ish"},
-		"bad window": {"-config", configPath, "-since", "soon"},
+		"bad split":   {"-config", configPath, "-split", "tomorrow-ish"},
+		"bad window":  {"-config", configPath, "-since", "soon"},
+		"two folders": {"-config", configPath, "-transcripts", t.TempDir(), t.TempDir()},
 	} {
 		if err := runContextReport(context.Background(), args, &bytes.Buffer{}); err == nil {
 			t.Errorf("%s: want an error", name)

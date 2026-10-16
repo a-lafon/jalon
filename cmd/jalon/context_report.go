@@ -35,6 +35,10 @@ func runContextReport(ctx context.Context, args []string, out io.Writer) error {
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
+	// A shell glob given to -transcripts expands to several folders: the first is read, the rest land here.
+	if flags.NArg() > 0 {
+		return fmt.Errorf("unexpected argument %s: -transcripts takes one directory", flags.Arg(0))
+	}
 	window, err := cli.ParseWindow(*sinceFlag)
 	if err != nil {
 		return err
