@@ -85,3 +85,5 @@ Prefer the status line unless you want the pole in Claude Desktop or on a row of
 ## Other clients
 
 Everything specific to Claude Code sits in `internal/client/claudecode`, behind the `client.Adapter` interface in `internal/client/client.go`: how to read the hook input, find the context size and the typed prompts, write the hook output, the reset commands, through the optional `client.Stopper` how to read a stop event and block the end of a turn, and through the optional `client.Installer` how to install the hooks. To add a client, implement that interface in `internal/client/<name>/`, register it in `cmd/jalon/clients.go`, and install `jalon hook prompt --client <name>` as that client's prompt hook, and `jalon hook stop --client <name>` as its stop hook when it has one.
+
+The integration tests, in `cmd/jalon/e2e_test.go`, run the real client against a fake model API that reports chosen context sizes; another client can be tested the same way once it has an adapter, with a fake of the API it calls.

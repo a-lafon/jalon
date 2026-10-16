@@ -18,11 +18,18 @@ import (
 	"github.com/a-lafon/jalon/internal/client/claudecode"
 )
 
+// afterTests holds what TestMain removes once every test has run.
+var afterTests []string
+
 // TestMain lifts the time limits of the hook and the status line: a test's
 // output must not depend on how fast the runner is.
 func TestMain(m *testing.M) {
 	hookTimeout, statuslineTimeout = time.Hour, time.Hour
-	os.Exit(m.Run())
+	code := m.Run()
+	for _, p := range afterTests {
+		os.RemoveAll(p)
+	}
+	os.Exit(code)
 }
 
 // useHome points ~ at a temporary folder, so the state files never touch the real one.

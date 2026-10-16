@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Every night, the integration test runs with the latest Claude Code, so a
+  # client release that breaks Jalon shows within a day.
+  schedule:
+    - cron: "17 4 * * *"
 
 permissions:
   contents: read
@@ -65,3 +69,30 @@ jobs:
 
       - name: Known vulnerabilities in the code paths used
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
+
+  # The real Claude Code runs Jalon's hooks against a fake model API served by
+  # the test: no key, no model. Pinned on pull requests, so a client release
+  # never turns one red; the latest version at night.
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLAUDE_CODE_VERSION: ${{ github.event_name == 'schedule' && 'latest' || '2.1.301' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Install Claude Code
+        run: |
+          npm install --global "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
+          claude --version
+
+      - name: Integration test
+        run: go test -tags e2e -count=1 ./cmd/jalon -run TestE2E
+        env:
+          JALON_E2E_REQUIRE: "1"
