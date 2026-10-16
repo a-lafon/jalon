@@ -20,7 +20,7 @@ Measured on four real handoffs, two runs each, with Claude Opus 5.5 in `claude -
 
 | Resume line | Tool calls before the answer | Cost of the run |
 |---|---|---|
-| `@` path and `reprends à partir de ce handoff`, as 0.1.0 gave | 1 to 13, 7.5 on average, mostly git and test commands | $0.32 on average |
+| `@` path and a request to resume from it, as 0.1.0 asked | 1 to 13, 7.5 on average, mostly git and test commands | $0.32 on average |
 | `@` path and a request to sum it up in three lines and wait | none in the 8 runs: it summed up and waited | $0.17 on average |
 
 In real sessions where the commands could run, the short line of 0.1.0 led to 101 and 104 tool calls before the user's second message. Eight runs per line, from my own handoffs with one model: a hint, not a proof.
