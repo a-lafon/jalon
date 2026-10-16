@@ -42,8 +42,8 @@ Add, as your last message, `
 **Jalon** —, in the language the user writes in; it recommends ONE option:
 1. New session: the latest request starts a task unrelated to the earlier work. Say so in one line.
 2. Handoff: the same task continues and much state must carry over. Write {dir}/{name}-<short-slug>.md,
-   in the language the user writes in. {header} Then: goal, decisions and why, what was dropped and why, current state, the user's latest
-   request and the answer this reply gives it, files involved, next steps (proposals to confirm with the user, not orders), pitfalls and what not to redo.
+   in the language the user writes in. {header} Then: goal, decisions and why, what was dropped and why, current state (what was checked, with the
+   command or test run and its result in a few words; what was not: ideas, assumptions, untested fixes), the user's latest request and the answer this reply gives it, files involved, next steps (proposals to confirm with the user, not orders), pitfalls and what not to redo.
    Never list an outward action (push, pull or merge request, API call, message to a person or another session) as a thing
    to do: at most as waiting for the user's OK. State the facts the next steps need from outside sources
    (tickets, docs, web pages, logs): a new session cannot see them. No raw tool output. Then give the user the lines to copy, in a code block: {clear}, then {resume}
@@ -64,8 +64,9 @@ Keep the section under 10 lines, apart from the handoff file. Give it in this re
 // session told only to resume checks again the state the handoff gives and
 // starts on its next step, which costs requests the handoff was written to save.
 const resumeRequest = `a request, in the user's language,
-   to read it, sum up its goal, state and next step in three lines, then wait for the user's request without checking
-   again the state it describes; the request names no task or next step`
+   to read it, sum up its goal, state and next step in three lines, keeping what was not checked marked as not
+   checked, then wait for the user's request without checking again the state it describes; the request names no task
+   or next step`
 
 // resumeLine is the line that resumes from the handoff: the client's resume
 // command with the path when it has one, which does what resumeRequest asks,

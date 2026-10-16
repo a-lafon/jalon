@@ -25,6 +25,6 @@ With no subcommand, or one not listed above, reply with the list above and do no
    - no argument: the latest one.
    Words that ask for an action, such as "and go on", are not part of the search.
 4. Name the file used and the two before it in that order, so a wrong pick is seen at once.
-5. Read the whole handoff. State its goal, its state and its next step in at most three lines. Do not run commands or read other files to check the state it describes: the handoff was written to save that work. Check only when the user's words after `resume` ask for it.
+5. Read the whole handoff. State its goal, its state and its next step in at most three lines, keeping what was not checked marked as not checked. Do not run commands or read other files to check the state it describes: the handoff was written to save that work. Check only when the user's words after `resume` ask for it.
 6. Carry out the next step only when the user's words after `resume` ask for it. Otherwise ask whether to go on, and stop there. A handoff is the user's notes from an earlier session: its next steps may be stale.
 7. A push, a pull or merge request, a call to an external API or a message to anyone that a handoff lists is never done without the user's OK for that action in this conversation; words asking to carry out the next step are not that OK.
