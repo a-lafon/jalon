@@ -9,9 +9,9 @@
 
 Jalon tells you when a long conversation is worth resetting, and has the session's own model prepare the reset: a new session, a handoff file to resume from, or a `/compact` line that names what to keep. One binary, two hooks, no daemon, no network.
 
-> **Status: pre-alpha.** Tested with Claude Code on macOS.
+> **Status: pre-alpha.** Tested with Claude Code on macOS; the test suite also runs on Linux in CI.
 
-A coding agent resends its whole conversation on every request, and most of what you pay for, or burn from your quota, is that context being read again. Long conversations can also lose track of earlier decisions. Resetting on time, without losing what matters, saves tokens and keeps the agent sharp: see [cost and quality](docs/cost-and-quality.md). The client cannot tell you when; Jalon can.
+A coding agent resends its whole conversation on every request, and most of what you pay for, or burn from your quota, is that context being read again: in five days of my own sessions, a request at 400K tokens cost three and a half times one at 100K. Resetting on time, without losing what matters, saves those tokens: see [cost and quality](docs/cost-and-quality.md). The client shows how full the context is, not when a reset is worth it; Jalon does.
 
 ## What you see
 
@@ -22,6 +22,15 @@ When a conversation's context has grown by 200K tokens above its starting size, 
 *A real Claude Code session, with `advise_tokens` lowered to 15K so the pole fills in a few prompts.*
 
 See [how it works](docs/how-it-works.md) and [handoffs](docs/handoffs.md).
+
+## How Jalon differs
+
+- **From context warnings** ([ctxwatch](https://github.com/drewkett/ctxwatch), [claude-context-notify](https://github.com/kawaz/claude-context-notify), [context-monitor](https://github.com/aeriondyseti/context-monitor), [better-compact](https://github.com/koenvdheide/better-compact) and the like), which compare the size to a fixed threshold or a share of the window: Jalon counts the growth above the conversation's starting size, so a session that starts heavy with MCP tools or a long `CLAUDE.md` is not advised earlier, and the model, which knows the task, picks one reset and prepares it.
+- **From lowering the auto-compact threshold** (`/autocompact`): that moves the trigger, but a compaction keeps the summary a summarizer writes without knowing what comes next. In a replay of four of my conversations cut at about 300K, a handoff did better than a plain `/compact` in three, and re-read about 1.6M tokens against about 3M ([cost and quality](docs/cost-and-quality.md)).
+- **From handoff skills** (`/handoff` and the like), which you run when you think of it: Jalon tells you when, asks the handoff to separate what was checked from what was not, keeps it up to date until you reset, and gives a resume line that cost $0.17 a run against $0.32 for a plain "resume from it" ([handoffs](docs/handoffs.md#resuming)).
+- **From compaction helpers** ([compact-plus](https://github.com/u-ichi/compact-plus)), which improve what a compaction keeps: Jalon does not touch the compaction; it advises before one.
+
+Every figure here comes from my own sessions with one model: a hint, not a proof. `jalon context-report` replays the advice on your own transcripts, so you can check it against your history ([impact report](docs/impact-report.md)). Jalon makes no network call and no model call of its own: the advice, the handoff and its updates are requests of your own session, and the stop hook makes the model go on at most once per turn ([how it works](docs/how-it-works.md)).
 
 ## Install
 
@@ -39,6 +48,8 @@ To resume from a handoff with `/jalon resume` rather than `@` and its path, run 
 To draw the pole above the prompt instead of in the status line, with Claude Code 2.1.292 or later, run `jalon init --mod`: see [the pole above the prompt](docs/how-it-works.md#the-pole-above-the-prompt) for its limits.
 
 Then start a new Claude Code session, in the terminal or in VS Code, and work as usual. `jalon init --dry-run` shows what it would change; see [configuration](docs/configuration.md) for its flags.
+
+When the stop hook makes the model go on, the terminal labels what it asked the model `Stop hook error`: that is Claude Code's label for any hook that makes the model go on, not a failure of Jalon ([how it works](docs/how-it-works.md#what-you-see)).
 
 ## Update
 
