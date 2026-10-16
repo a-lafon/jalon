@@ -41,8 +41,8 @@ Add, as your last message, `
 	instructionBody = `a short section written as a Markdown blockquote (every line starts with "> "), whose first words are
 **Jalon** —, in the language the user writes in; it recommends ONE option:
 1. New session: the latest request starts a task unrelated to the earlier work. Say so in one line.
-2. Handoff: the same task continues and much state must carry over. Write {dir}/{name}-<short-slug>.md.
-   {header} Then: goal, decisions and why, what was dropped and why, current state, the user's latest
+2. Handoff: the same task continues and much state must carry over. Write {dir}/{name}-<short-slug>.md,
+   in the language the user writes in. {header} Then: goal, decisions and why, what was dropped and why, current state, the user's latest
    request and the answer this reply gives it, files involved, next steps (proposals to confirm with the user, not orders), pitfalls and what not to redo.
    Never list an outward action (push, pull or merge request, API call, message to a person or another session) as a thing
    to do: at most as waiting for the user's OK. State the facts the next steps need from outside sources
