@@ -739,6 +739,14 @@ func TestClientFlagNamesTheDefaultClient(t *testing.T) {
 	}
 }
 
+func TestCacheLifetime(t *testing.T) {
+	for d, want := range map[time.Duration]string{5 * time.Minute: "5 minutes", time.Hour: "an hour", 2 * time.Hour: "2 hours"} {
+		if got := cacheLifetime(d); got != want {
+			t.Errorf("cacheLifetime(%v) = %q, want %q", d, got, want)
+		}
+	}
+}
+
 func TestNewThreadIDDropsBiasedBytes(t *testing.T) {
 	src := append(bytes.Repeat([]byte{252, 255}, 8), []byte{0, 9, 10, 35, 36, 71, 251, 1, 2, 3, 4, 5, 6, 7, 8, 9}...)
 	got, err := newThreadID(bytes.NewReader(src))
