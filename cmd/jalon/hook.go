@@ -57,8 +57,27 @@ While background work you started that will report back (agents, background comm
 a new session or {clear}: its result would reach a conversation that lost why it was started, or end with this session.
 Recommend a compact whose line keeps the running work, what to do with its result, and the handoff path and first lines
 of option 2; add one line saying the user can ask for that handoff once the work has reported.
-Keep the section under 10 lines, apart from the handoff file. Give it in this reply only: do not repeat it in later replies.`
+{cache}Keep the section under 10 lines, apart from the handoff file. Give it in this reply only: do not repeat it in later replies.`
 )
+
+// cacheLine fills {cache} when the cache lifetime is known: after a longer
+// pause the first request writes the whole context to the cache again, which
+// costs many times reading it, and the same for a reset taken then.
+const cacheLine = `Add one line to the section: the prompt cache keeps this context for {ttl}; after a longer pause, the next request
+writes it all again, so the option is best taken before such a pause.
+`
+
+// cacheLifetime says d in words: "an hour", "5 minutes".
+func cacheLifetime(d time.Duration) string {
+	switch {
+	case d == time.Hour:
+		return "an hour"
+	case d%time.Hour == 0:
+		return fmt.Sprintf("%d hours", int(d.Hours()))
+	default:
+		return fmt.Sprintf("%d minutes", int(d.Minutes()))
+	}
+}
 
 // resumeRequest is what follows the handoff's path on the resume line. A new
 // session told only to resume checks again the state the handoff gives and
@@ -149,7 +168,8 @@ func runPromptHook(ctx context.Context, args []string, stdin io.Reader, out io.W
 				_ = advisor.SetHandoff(dir, prompt.Session, name, threadOf(name), "")
 			}
 		}
-		st, ok := measure(dir, adapter, prompt, adapter.ReadTail(prompt, "", false), cfg, now)
+		tail := adapter.ReadTail(prompt, "", false)
+		st, ok := measure(dir, adapter, prompt, tail, cfg, now)
 		if !ok {
 			return nil
 		}
@@ -164,7 +184,7 @@ func runPromptHook(ctx context.Context, args []string, stdin io.Reader, out io.W
 				return nil
 			}
 		}
-		body, ok := recordAdvice(dir, adapter, prompt, st, now)
+		body, ok := recordAdvice(dir, adapter, prompt, st, tail.CacheTTL, now)
 		if !ok {
 			return nil
 		}
@@ -262,11 +282,12 @@ func runStopHook(ctx context.Context, args []string, stdin io.Reader, out io.Wri
 			return reply
 		}
 
-		st, ok = measure(dir, adapter, ev.Prompt, adapter.ReadTail(ev.Prompt, "", false), cfg, now)
+		tail := adapter.ReadTail(ev.Prompt, "", false)
+		st, ok = measure(dir, adapter, ev.Prompt, tail, cfg, now)
 		if !ok || !typed() {
 			return nil
 		}
-		body, ok := recordAdvice(dir, adapter, ev.Prompt, st, now)
+		body, ok := recordAdvice(dir, adapter, ev.Prompt, st, tail.CacheTTL, now)
 		if !ok {
 			return nil
 		}
@@ -319,8 +340,8 @@ func measure(dir string, adapter client.Adapter, p client.Prompt, tail client.Ta
 // recordAdvice does what an advice at the state's size needs before it is
 // shown: it names the next handoff, creates its folder, and records the advice
 // at the prompt of p, so the next prompt does not repeat it. It returns the
-// instruction body, filled in.
-func recordAdvice(dir string, adapter client.Adapter, p client.Prompt, st advisor.Session, now time.Time) (string, bool) {
+// instruction body, filled in, with the cache lifetime ttl when it is not 0.
+func recordAdvice(dir string, adapter client.Adapter, p client.Prompt, st advisor.Session, ttl time.Duration, now time.Time) (string, bool) {
 	handoffDir := handoffFolder(p.Dir)
 	// A handoff written from the last advice's name is the parent of the next one.
 	parent := st.Parent
@@ -345,7 +366,7 @@ func recordAdvice(dir string, adapter client.Adapter, p client.Prompt, st adviso
 	// Record the advice before it is shown, so the next prompt does not repeat it.
 	_ = advisor.MarkAdvised(dir, p.Session, st.Size, now, p.ID)
 	_ = advisor.SetHandoff(dir, p.Session, parent, thread, name)
-	return fillBody(adapter, handoffDir, name, handoffHeader(parent, p.Session)), true
+	return fillBody(adapter, handoffDir, name, handoffHeader(parent, p.Session), ttl), true
 }
 
 // handoffFolder is the handoff folder of the project in dir, relative when the
@@ -366,11 +387,15 @@ func handoffHeader(parent, session string) string {
 }
 
 // fillBody is the instruction body for the handoff name prefix name in
-// handoffDir, with the client's commands.
-func fillBody(adapter client.Adapter, handoffDir, name, header string) string {
+// handoffDir, with the client's commands and, when ttl is not 0, the cache line.
+func fillBody(adapter client.Adapter, handoffDir, name, header string, ttl time.Duration) string {
 	cmds := adapter.Commands()
-	// {resume} goes first: the line it puts in holds {dir} and {name}.
-	body := strings.ReplaceAll(instructionBody, "{resume}", resumeLine(cmds))
+	cache := ""
+	if ttl > 0 {
+		cache = strings.ReplaceAll(cacheLine, "{ttl}", cacheLifetime(ttl))
+	}
+	// {resume} and {cache} go first: the line {resume} puts in holds {dir} and {name}.
+	body := strings.NewReplacer("{resume}", resumeLine(cmds), "{cache}", cache).Replace(instructionBody)
 	return strings.NewReplacer(
 		"{dir}", handoffDir,
 		"{name}", name,

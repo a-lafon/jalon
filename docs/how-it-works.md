@@ -33,6 +33,8 @@ At the first prompt past the threshold, the terminal shows a one-line notice, `J
 
 While background work the model started that will report back (agents, background commands) is still running, the model is asked to recommend a `/compact` line rather than a new session or `/clear`; that line keeps the running work, what to do with its result, and the proposed handoff's path and first lines, so a handoff you ask for once the work has reported keeps its name and its place in the thread.
 
+The section also says how long the prompt cache keeps the context, an hour or 5 minutes, as the conversation's last request wrote it to the cache. After a longer pause the next request writes the whole context to the cache again, and so does a `/compact` or a handoff taken then, which costs forty times reading it with the one-hour cache (see [cost and quality](cost-and-quality.md)). So a reset is best taken before a pause. When the last request wrote nothing to the cache, the line is left out.
+
 When the threshold is crossed during a turn, the section comes as a message of its own after the reply, and the terminal shows `Jalon: context at 296K tokens, a reset proposal follows.` The terminal also shows what the stop hook asked the model, labelled `Stop hook error`, and `Stop hook error occurred` below the prompt: Claude Code's wording for a hook that makes the model go on, not an error of Jalon.
 
 You run the command; Jalon never does.

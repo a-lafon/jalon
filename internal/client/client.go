@@ -5,6 +5,8 @@
 // know nothing of any client.
 package client
 
+import "time"
+
 // Prompt is a prompt event as the client reports it.
 type Prompt struct {
 	// Session is the client's session ID, used as the state file name.
@@ -32,6 +34,9 @@ type Tail struct {
 	// Size is the size in tokens of the main conversation's context, 0 when it
 	// cannot be told.
 	Size int
+	// CacheTTL is how long the client's prompt cache keeps the context, as the
+	// request that gave Size wrote it; 0 when it cannot be told.
+	CacheTTL time.Duration
 	// Typed is true when it was looked for and shows a prompt typed by a
 	// person, not sent by a program; when a prompt ID was asked for, only that
 	// prompt counts.
