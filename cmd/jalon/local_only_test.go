@@ -113,7 +113,7 @@ func TestHookAdvisingWritesTheStateAndTheHandoffFolder(t *testing.T) {
 	}
 	expectFiles(t, "the hook in the home", created(t, home, homeBefore), ".jalon/", ".jalon/sessions/", ".jalon/sessions/s1.json")
 	expectFiles(t, "the hook in the project", created(t, repo, repoBefore),
-		".jalon/", ".jalon/.gitignore", ".jalon/handoffs/", ".jalon/handoffs/2026-10-12/")
+		".jalon/", ".jalon/.gitignore", ".jalon/handoffs/")
 }
 
 func TestStatuslineWritesNothing(t *testing.T) {
@@ -166,5 +166,5 @@ func TestStopHookAdvisingWritesTheStateAndTheHandoffFolder(t *testing.T) {
 	// The state file existed already: the advice changes it and creates nothing else.
 	expectFiles(t, "the stop hook in the home", created(t, home, homeBefore))
 	expectFiles(t, "the stop hook in the project", created(t, repo, repoBefore),
-		".jalon/", ".jalon/.gitignore", ".jalon/handoffs/", ".jalon/handoffs/2026-10-12/")
+		".jalon/", ".jalon/.gitignore", ".jalon/handoffs/")
 }

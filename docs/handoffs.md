@@ -10,7 +10,7 @@ Handoffs go to `.jalon/handoffs/` at the root of the git repository, or in the d
 .jalon/handoffs/2026-10-12/0900-r4sefxw4-advisor.md
 ```
 
-The name is `<time>-<thread>-<slug>`: the time of the advice, the thread ID, and a slug the model picks. Jalon creates the day folder and `.jalon/.gitignore`, which holds `*`, so nothing there is ever committed. It never modifies an existing file in your project.
+The name is `<time>-<thread>-<slug>`: the time of the advice, the thread ID, and a slug the model picks. Jalon creates `.jalon/handoffs/` and `.jalon/.gitignore`, which holds `*`, so nothing there is ever committed. The day folder is made by the model when it writes a handoff, so an advice you do not take leaves no empty folder. It never modifies an existing file in your project.
 
 ## Resuming
 

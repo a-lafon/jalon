@@ -379,9 +379,13 @@ func TestHookAdvisesWhenTheThresholdIsCrossed(t *testing.T) {
 		t.Errorf("additionalContext = %q", ctxt)
 	}
 
-	// The handoff folder and its day folder are at the git top level, ignored by itself.
-	if fi, err := os.Stat(filepath.Join(repo, ".jalon", "handoffs", "2026-10-12")); err != nil || !fi.IsDir() {
-		t.Errorf("day folder at the repository root: %v", err)
+	// The handoff folder is at the git top level, ignored by itself; the day
+	// folder is left to the model's write.
+	if fi, err := os.Stat(filepath.Join(repo, ".jalon", "handoffs")); err != nil || !fi.IsDir() {
+		t.Errorf("handoff folder at the repository root: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(repo, ".jalon", "handoffs", "2026-10-12")); err == nil {
+		t.Error("the day folder was created before any handoff")
 	}
 	if b, _ := os.ReadFile(filepath.Join(repo, ".jalon", ".gitignore")); string(b) != "*\n" {
 		t.Errorf(".gitignore = %q, want *", b)
@@ -521,7 +525,7 @@ func TestHookCreatesThePrivateFolders(t *testing.T) {
 	if runPrompt(t, cfg, hookInput("s1", repo)) == "" {
 		t.Fatal("expected advice")
 	}
-	for _, d := range []string{".jalon", ".jalon/handoffs", ".jalon/handoffs/2026-10-12"} {
+	for _, d := range []string{".jalon", ".jalon/handoffs"} {
 		fi, err := os.Stat(filepath.Join(repo, d))
 		if err != nil {
 			t.Fatal(err)
@@ -801,8 +805,8 @@ func TestHookThreadsHandoffs(t *testing.T) {
 		if stamp != "2026-10-12/0900" || strings.Contains(ctxt, "Follows:") || !strings.Contains(ctxt, `Its first line is "Session: s1".`) {
 			t.Errorf("instruction = %q", ctxt)
 		}
-		if fi, err := os.Stat(filepath.Join(repo, ".jalon", "handoffs", "2026-10-12")); err != nil || !fi.IsDir() {
-			t.Errorf("day folder: %v", err)
+		if fi, err := os.Stat(filepath.Join(repo, ".jalon", "handoffs")); err != nil || !fi.IsDir() {
+			t.Errorf("handoff folder: %v", err)
 		}
 		if st, _ := advisor.Load(dir, "s1"); st.Thread != id || st.Proposed != "2026-10-12/0900-"+id || st.Parent != "" {
 			t.Errorf("state = %+v", st)
@@ -1234,8 +1238,8 @@ func TestStopHookCrossedDuringTheTurn(t *testing.T) {
 	if st, _ := advisor.Load(dir, "s1"); st.LastAdvised != 296_000 || st.AdvisedPrompt != "p2" || st.Prompt != "p2" {
 		t.Errorf("state = %+v, want last advised 296000 at prompt p2", st)
 	}
-	if _, err := os.Stat(filepath.Join(repo, ".jalon", "handoffs", "2026-10-12")); err != nil {
-		t.Errorf("day folder: %v", err)
+	if _, err := os.Stat(filepath.Join(repo, ".jalon", "handoffs")); err != nil {
+		t.Errorf("handoff folder: %v", err)
 	}
 
 	// The model added the section: the stop hook runs again, already active.
