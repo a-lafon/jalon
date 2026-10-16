@@ -38,7 +38,7 @@ One run per conversation, from my own work with one model: a hint, not a proof. 
 
 ## What a week of real use showed
 
-Five days of my own sessions with Jalon 0.1.0, 2026-10-11 to 2026-10-15, in two projects: 54 sessions with Claude Opus 5.5, about $505 at the API prices above.
+Five days of my own sessions with Jalon 0.1.0, 2026-10-11 to 2026-10-15, in two projects: 48 sessions, about $505 at the Claude Opus 5.5 prices above. 12% of the requests went to Claude Sonnet 5.5; at each model's own price the week cost $487.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../assets/cost-per-request-dark.svg">
@@ -48,4 +48,4 @@ Five days of my own sessions with Jalon 0.1.0, 2026-10-11 to 2026-10-15, in two 
 - **Below 200K a request costs about the same**: what it writes to the cache and its output weigh more than re-reading the context. Above, the re-reading takes over, and a request at 400K costs three and a half times one at 100K.
 - **A reset brings the context back down.** The 12 sessions resumed from a handoff started at 43K to 57K, and the 5 `/compact` followed by a request landed at 46K to 77K. The 12 resumed sessions cost $117; the same requests on the context left behind would have re-read $82 more. That counts the same requests in both cases, so it is an estimate.
 - **The cache expiring costs less than the context size.** 21 requests rewrote the whole context after a pause of more than an hour or a `/model` switch: $27, 5% of the week.
-- **Subagents are 41% of the cost**, and Jalon does not change it: each subagent starts from its own context. The rest is re-reading the cache (27%), writing to it (20%) and output (12%).
+- **Subagents are 41% of the cost**, and Jalon does not change it. Starting them costs little: the first request of each of the 108 subagents is 6% of their cost. The cost comes from long subagents whose context grows like a main conversation: the 13 that went past 200K, up to 417K and 154 requests, are 47% of it. The rest is re-reading the cache (27%), writing to it (20%) and output (12%).
