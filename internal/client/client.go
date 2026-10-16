@@ -98,7 +98,8 @@ type Adapter interface {
 	ContextFloor(Prompt) (int, bool)
 	// Commands returns the client's reset commands.
 	Commands() Commands
-	// Reply formats the hook output: a message for the user and context for the model.
+	// Reply formats the hook output: a message for the user, none when "", and
+	// context for the model.
 	Reply(userMessage, modelContext string) ([]byte, error)
 	// StatusSize reads the context size and the session ID ("" when the input has
 	// none) from the client's status line input, and false for the size when
