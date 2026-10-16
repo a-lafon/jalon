@@ -100,6 +100,8 @@ go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
 
 CI runs the same checks on every push to `main` and on every pull request.
 
+`go test -tags e2e ./cmd/jalon` runs the integration tests: the real Claude Code, in `claude -p`, runs Jalon's hooks against a fake model API the test serves, so they need `claude` on the `PATH` but no key, no model and no network beyond localhost. They check what Jalon sends the model and the transcript fields it reads, not what a model does with the advice. CI runs them with a pinned Claude Code on every pull request, and with the latest one every night.
+
 To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
 ## License
