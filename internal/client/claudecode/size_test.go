@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func sizeLine(size int, sidechain bool) string {
@@ -50,6 +51,33 @@ func TestContextSize(t *testing.T) {
 			got, ok := sizeOf(writeLines(t, tt.lines...))
 			if got != tt.want || ok != tt.ok {
 				t.Errorf("size = %d, %v; want %d, %v", got, ok, tt.want, tt.ok)
+			}
+		})
+	}
+}
+
+func TestCacheTTL(t *testing.T) {
+	writes := func(fiveMin, oneHour int, sidechain bool) string {
+		return fmt.Sprintf(`{"type":"assistant","isSidechain":%t,"message":{"usage":{"input_tokens":1,"cache_creation_input_tokens":%d,"cache_read_input_tokens":90000,"cache_creation":{"ephemeral_5m_input_tokens":%d,"ephemeral_1h_input_tokens":%d}}}}`,
+			sidechain, fiveMin+oneHour, fiveMin, oneHour)
+	}
+	tests := map[string]struct {
+		lines []string
+		want  time.Duration
+	}{
+		"one hour":                       {[]string{writes(0, 800, false)}, time.Hour},
+		"five minutes":                   {[]string{writes(800, 0, false)}, 5 * time.Minute},
+		"both: the shorter":              {[]string{writes(10, 800, false)}, 5 * time.Minute},
+		"nothing written":                {[]string{writes(0, 0, false)}, 0},
+		"no cache_creation":              {[]string{sizeLine(100_000, false)}, 0},
+		"from the entry that gives size": {[]string{writes(800, 0, false), writes(0, 800, false)}, time.Hour},
+		"sidechain ignored":              {[]string{writes(0, 800, false), writes(800, 0, true)}, time.Hour},
+		"after a compaction":             {[]string{writes(0, 800, false), compact}, 0},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			if got := readTail(writeLines(t, tt.lines...), "", false).CacheTTL; got != tt.want {
+				t.Errorf("CacheTTL = %v, want %v", got, tt.want)
 			}
 		})
 	}

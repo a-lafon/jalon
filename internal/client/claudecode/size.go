@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+	"time"
 
 	"github.com/a-lafon/jalon/internal/client"
 )
@@ -26,7 +27,9 @@ var readAt = (*os.File).ReadAt
 //     is missing there is no size at all;
 //   - an assistant entry that is not a sidechain, with usage: input, cache read
 //     and cache creation tokens, the sum of Claude Code's own
-//     context_window.total_input_tokens.
+//     context_window.total_input_tokens. Its cache_creation tells the cache
+//     lifetime: 5 minutes or an hour, by the field its writes went to; none
+//     when the request wrote nothing to the cache.
 //
 // With typed, Typed is whether the same part of the transcript holds a user
 // entry, not a sidechain, whose origin kind is "human": Claude Code writes it on
@@ -86,6 +89,10 @@ type tailEntry struct {
 			Input         int `json:"input_tokens"`
 			CacheRead     int `json:"cache_read_input_tokens"`
 			CacheCreation int `json:"cache_creation_input_tokens"`
+			CacheWrites   struct {
+				FiveMinutes int `json:"ephemeral_5m_input_tokens"`
+				OneHour     int `json:"ephemeral_1h_input_tokens"`
+			} `json:"cache_creation"`
 		} `json:"usage"`
 	} `json:"message"`
 }
@@ -127,6 +134,14 @@ func scanTail(buf []byte, promptID string, typed bool) (tail client.Tail, sized 
 			u := e.Message.Usage
 			if n := u.Input + u.CacheRead + u.CacheCreation; n > 0 {
 				tail.Size, sized = n, true
+				// The shorter lifetime when a request wrote both: the context is lost
+				// with its first part to expire.
+				switch {
+				case u.CacheWrites.FiveMinutes > 0:
+					tail.CacheTTL = 5 * time.Minute
+				case u.CacheWrites.OneHour > 0:
+					tail.CacheTTL = time.Hour
+				}
 			}
 		}
 	}
