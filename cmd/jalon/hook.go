@@ -339,7 +339,7 @@ func recordAdvice(dir string, adapter client.Adapter, p client.Prompt, st adviso
 	name := day + "/" + now.Format("1504") + "-" + thread
 	// The folder is best effort: the advice is given even when it cannot be made.
 	if p.Dir != "" {
-		_ = ensureHandoffFolder(projectRoot(p.Dir), day)
+		_ = ensureHandoffFolder(projectRoot(p.Dir))
 	}
 	// Record the advice before it is shown, so the next prompt does not repeat it.
 	_ = advisor.MarkAdvised(dir, p.Session, st.Size, now, p.ID)
@@ -470,20 +470,21 @@ func projectRoot(dir string) string {
 	}
 }
 
-// ensureHandoffFolder creates <root>/.jalon/handoffs/<day>, and
+// ensureHandoffFolder creates <root>/.jalon/handoffs, and
 // <root>/.jalon/.gitignore holding "*" when there is none, so the folder is
 // never committed. The folders it creates are private to the user: handoffs
-// summarise conversations. It never changes an existing file, and creates
-// nothing when .jalon, handoffs or the day folder is a symlink or a file, which
-// could lead outside the project.
-func ensureHandoffFolder(root, day string) error {
+// summarise conversations. The day folder is left to the model's write, so an
+// advice not taken leaves no empty day folder. It never changes an existing
+// file, and creates nothing when .jalon or handoffs is a symlink or a file,
+// which could lead outside the project.
+func ensureHandoffFolder(root string) error {
 	dir := filepath.Join(root, ".jalon")
-	for _, d := range []string{dir, filepath.Join(dir, "handoffs"), filepath.Join(dir, "handoffs", day)} {
+	for _, d := range []string{dir, filepath.Join(dir, "handoffs")} {
 		if fi, err := os.Lstat(d); err == nil && !fi.IsDir() {
 			return fmt.Errorf("%s is not a directory", d)
 		}
 	}
-	if err := os.MkdirAll(filepath.Join(dir, "handoffs", day), 0o700); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, "handoffs"), 0o700); err != nil {
 		return err
 	}
 	f, err := os.OpenFile(filepath.Join(dir, ".gitignore"), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
