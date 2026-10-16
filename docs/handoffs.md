@@ -16,6 +16,15 @@ The name is `<time>-<thread>-<slug>`: the time of the advice, the thread ID, and
 
 The advice gives you the lines to copy: `/clear`, then `@` and the handoff's full path, followed by a request to sum it up in three lines and wait for yours, without checking again the state it describes, and naming no task or next step. So the new session starts from the handoff, not from a task, and does not spend requests redoing what the handoff already says. To save a turn, add your own request after the `@` line. When the skill that `jalon init --skill` installs is there, the line is `/jalon resume` and the handoff's full path instead. In a session driven by a skill or command, the resume line re-invokes it, followed by the handoff's path as plain text and the same request. You can also resume in a new window.
 
+Measured on four real handoffs, two runs each, with Claude Opus 5.5 in `claude -p` in a copy of the repository where only reading files was allowed:
+
+| Resume line | Tool calls before the answer | Cost of the run |
+|---|---|---|
+| `@` path and `reprends à partir de ce handoff`, as 0.1.0 gave | 1 to 13, 7.5 on average, mostly git and test commands | $0.32 on average |
+| `@` path and a request to sum it up in three lines and wait | none in the 8 runs: it summed up and waited | $0.17 on average |
+
+In real sessions where the commands could run, the short line of 0.1.0 led to 101 and 104 tool calls before the user's second message. Eight runs per line, from my own handoffs with one model: a hint, not a proof.
+
 With the skill, `/jalon resume` finds the latest handoff of the project itself, or `/jalon resume <words>` the latest whose name or title holds them, or `/jalon resume <path>` that file. It names the handoff it picked and the two before it, sums up its goal, state and next step, then asks before going on, unless your words ask it to: `/jalon resume and go on`. It does not run commands to check the state the handoff describes unless your words ask for it. A push, a pull request, an API call or a message the handoff lists still waits for your OK.
 
 ## Threads

@@ -21,6 +21,8 @@ Two hooks give the advice. The **prompt hook** runs before each prompt you type 
 
 In both cases it blocks the end of the turn once: the model goes on in the same turn, with one more request, and adds the section after the reply you already see; it is never asked to repeat its answer. The stop hook reads the size from the transcript, where Claude Code has not yet written the turn's last request when the hook runs: a crossing that only the last request shows is advised at your next prompt instead.
 
+A replay of 54 real sessions of one week through the hooks of 0.1.0, which had only the prompt hook, and of the stop hook, with each transcript fed line by line and the turn's last request held back as Claude Code does: the stop hook advised 2 sessions that 0.1.0 never advised, since no prompt was typed after the crossing, and 2 others earlier, at 256K instead of 317K and at 259K instead of 297K. A turn that grows the context by itself still gets the advice only at its end: one that went from 72K to 365K was advised at 365K, against 372K at the next prompt with 0.1.0.
+
 ## What you see
 
 At the first prompt past the threshold, the terminal shows a one-line notice, `Jalon: context at 212K tokens, a reset proposal follows the answer.` (the VS Code extension does not show it), and the model is asked to answer your message first, then end its reply with one recommendation, in the language you write in, in a quoted block that starts with **Jalon** so you can tell where it comes from, and only in that reply:
