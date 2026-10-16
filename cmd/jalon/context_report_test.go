@@ -414,12 +414,12 @@ func floor(folder, cwd string, m, size int, read, base int64) ctxreport.Floor {
 func TestStartingSizeByProject(t *testing.T) {
 	t.Setenv("HOME", "/home/me")
 	floors := []ctxreport.Floor{
-		// The later conversation of the squad ran in a subfolder: the earliest names it.
-		floor("/t/-home-me-projects-squad", "/home/me/projects/squad/sub", 30, 71_000, 213_000, 213_000),
-		floor("/t/-home-me-projects-squad", "/home/me/projects/squad", 10, 67_000, 201_000, 201_000),
-		floor("/t/-home-me-projects-squad", "", 5, 74_000, 222_000, 222_000),
-		floor("/t/-home-me-perso-cairn", "/home/me/perso/cairn", 0, 43_000, 430_000, 86_000),
-		floor("/t/-home-me-perso-cairn", "/home/me/perso/cairn", 1, 47_000, 470_000, 94_000),
+		// The later conversation of the alpha ran in a subfolder: the earliest names it.
+		floor("/t/-home-me-projects-alpha", "/home/me/projects/alpha/sub", 30, 71_000, 213_000, 213_000),
+		floor("/t/-home-me-projects-alpha", "/home/me/projects/alpha", 10, 67_000, 201_000, 201_000),
+		floor("/t/-home-me-projects-alpha", "", 5, 74_000, 222_000, 222_000),
+		floor("/t/-home-me-perso-delta", "/home/me/perso/delta", 0, 43_000, 430_000, 86_000),
+		floor("/t/-home-me-perso-delta", "/home/me/perso/delta", 1, 47_000, 470_000, 94_000),
 		// Starts at 70K, then reads 70K, 170K and 270K: 210K of 510K. No cwd.
 		floor("/t/-work-app", "", 2, 70_000, 510_000, 210_000),
 	}

@@ -1212,7 +1212,7 @@ func TestStopHookSectionMissing(t *testing.T) {
 	}
 
 	t.Run("handoff written", func(t *testing.T) {
-		written := writeHandoff(t, repo, prefix+"-squad-mr-tour-2.md")
+		written := writeHandoff(t, repo, prefix+"-alpha-review-2.md")
 		out := parseStop(t, runStop(t, cfg, stopInput("s1", "p1", repo, "Le fichier de reprise est écrit.", false)))
 		if !strings.HasPrefix(out.Reason, "Jalon: reminder") ||
 			!strings.Contains(out.Reason, "The handoff "+written+" is already written: do not write another file") {
@@ -1230,7 +1230,7 @@ func TestPromptHookAsksToKeepTheHandoffUpToDate(t *testing.T) {
 	})
 	t.Run("handoff written", func(t *testing.T) {
 		repo, cfg, prefix := advisedAt1748(t)
-		written := writeHandoff(t, repo, prefix+"-squad-mr-tour-2.md")
+		written := writeHandoff(t, repo, prefix+"-alpha-review-2.md")
 		var out struct {
 			SystemMessage *string `json:"systemMessage"`
 			Hook          struct {
@@ -1251,7 +1251,7 @@ func TestPromptHookAsksToKeepTheHandoffUpToDate(t *testing.T) {
 	})
 	t.Run("after a compaction", func(t *testing.T) {
 		repo, cfg, prefix := advisedAt1748(t)
-		writeHandoff(t, repo, prefix+"-squad-mr-tour-2.md")
+		writeHandoff(t, repo, prefix+"-alpha-review-2.md")
 		appendTranscript(t, "s1", `{"type":"system","subtype":"compact_boundary","compactMetadata":{"trigger":"manual","postTokens":22000}}`+"\n")
 		if got := runPrompt(t, cfg, promptInput("s1", "p2", repo)); got != "" {
 			t.Errorf("output = %q, want nothing", got)

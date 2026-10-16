@@ -3,6 +3,6 @@ Starting size of the conversations (first request, transcripts)
   6 conversations: p10 43K  p50 67K  p90 74K  max 74K tokens; a reset cannot remove it, the advice counts the growth above it
   50% of the prompt tokens read by the conversations that started in this period was this starting size (1.0M of 2.0M), which no reset can remove
   by project, largest p50 first (starting size share of the prompt tokens read):
-    ~/projects/squad  3 conversations  p50 71K  max 74K  100%
+    ~/projects/alpha  3 conversations  p50 71K  max 74K  100%
     -work-app         1 conversation   p50 70K  max 70K  41%
-    ~/perso/cairn     2 conversations  p50 43K  max 47K  20%
+    ~/perso/delta     2 conversations  p50 43K  max 47K  20%
