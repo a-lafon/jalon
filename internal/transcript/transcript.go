@@ -170,6 +170,7 @@ var ignoredTypes = map[string]bool{
 	"file-history-snapshot": true, "file-history-delta": true, "mode": true,
 	"cost-state": true, "atis-latch": true, "progress": true, "summary": true,
 	"permission-mode": true, "custom-title": true, "agent-name": true,
+	"api-request": true, "api-request-blob": true, "api-request-shape": true,
 }
 
 // Reader reads transcript files and deduplicates compactions across them.

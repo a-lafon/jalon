@@ -114,7 +114,8 @@ func TestUnknownEntriesAreSkippedAndCounted(t *testing.T) {
 		`{"type":"user","timestamp":"yesterday","message":{"content":"hi"}}`,                           // bad timestamp
 		`{"type":"system","subtype":"compact_boundary","uuid":"c","timestamp":"2026-10-06T08:00:02Z"}`, // boundary without metadata
 		``,
-		`{"type":"attachment","uuid":"d"}`, // known and unused
+		`{"type":"attachment","uuid":"d"}`,       // known and unused
+		`{"type":"api-request-blob","uuid":"e"}`, // a copy of a request, known and unused
 		userText("2026-10-06T08:00:03Z", "hello"), // still read after all of that
 		assistant("2026-10-06T08:00:04Z", "m1", 10, 20, 30, 100),
 	}
@@ -123,14 +124,14 @@ func TestUnknownEntriesAreSkippedAndCounted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := Coverage{Files: 1, Read: 9, Interpreted: 2, Ignored: 1, Skipped: 6}
+	want := Coverage{Files: 1, Read: 10, Interpreted: 2, Ignored: 2, Skipped: 6}
 	if r.Coverage != want {
 		t.Errorf("coverage = %+v, want %+v", r.Coverage, want)
 	}
 	if len(c.Turns) != 1 || c.Turns[0].PromptTokens != 60 {
 		t.Errorf("turns = %+v, want one of 60 prompt tokens", c.Turns)
 	}
-	if got := r.Coverage.SkippedShare(); got < 0.66 || got > 0.67 {
+	if got := r.Coverage.SkippedShare(); got != 0.6 {
 		t.Errorf("skipped share = %v", got)
 	}
 }
