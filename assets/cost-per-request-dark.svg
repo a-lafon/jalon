@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="340" viewBox="0 0 640 340" role="img" aria-labelledby="t d">
+<title id="t">Average cost of one request by context size</title>
+<desc id="d">0–100K: $0.064 over 799 requests; 100–200K: $0.063 over 1743 requests; 200–300K: $0.086 over 1136 requests; 300–400K: $0.116 over 238 requests; 400–500K: $0.222 over 52 requests. Real sessions of one week, Opus 5.5 API prices.</desc>
+<rect width="640" height="340" rx="8" fill="#1a1a19"/>
+<text x="16" y="24" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="14" font-weight="600" fill="#ffffff">Average cost of one request, by context size</text>
+<text x="16" y="42" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="12" fill="#c3c2b7">3,968 requests from one week of real sessions, Opus 5.5 API prices.</text>
+<text x="16" y="58" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="12" fill="#c3c2b7">Subagents excluded. Each request re-reads the context and writes what it adds.</text>
+<line x1="64" y1="290.0" x2="600" y2="290.0" stroke="#383835" stroke-width="1"/>
+<text x="56" y="294.0" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="11" fill="#898781" text-anchor="end">$0.00</text>
+<line x1="64" y1="248.0" x2="600" y2="248.0" stroke="#2c2c2a" stroke-width="1"/>
+<text x="56" y="252.0" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="11" fill="#898781" text-anchor="end">$0.05</text>
+<line x1="64" y1="206.0" x2="600" y2="206.0" stroke="#2c2c2a" stroke-width="1"/>
+<text x="56" y="210.0" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="11" fill="#898781" text-anchor="end">$0.10</text>
+<line x1="64" y1="164.0" x2="600" y2="164.0" stroke="#2c2c2a" stroke-width="1"/>
+<text x="56" y="168.0" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="11" fill="#898781" text-anchor="end">$0.15</text>
+<line x1="64" y1="122.0" x2="600" y2="122.0" stroke="#2c2c2a" stroke-width="1"/>
+<text x="56" y="126.0" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="11" fill="#898781" text-anchor="end">$0.20</text>
+<line x1="64" y1="80.0" x2="600" y2="80.0" stroke="#2c2c2a" stroke-width="1"/>
+<text x="56" y="84.0" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="11" fill="#898781" text-anchor="end">$0.25</text>
+<rect x="87.6" y="236.2" width="60" height="53.8" rx="3" fill="#3987e5"/>
+<text x="117.6" y="230.2" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="12" fill="#ffffff" text-anchor="middle">$0.06</text>
+<text x="117.6" y="306" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="11" fill="#898781" text-anchor="middle">0–100K</text>
+<text x="117.6" y="320" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="11" fill="#898781" text-anchor="middle">799 requests</text>
+<rect x="194.8" y="237.1" width="60" height="52.9" rx="3" fill="#3987e5"/>
+<text x="224.8" y="231.1" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="12" fill="#ffffff" text-anchor="middle">$0.06</text>
+<text x="224.8" y="306" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="11" fill="#898781" text-anchor="middle">100–200K</text>
+<text x="224.8" y="320" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="11" fill="#898781" text-anchor="middle">1,743 requests</text>
+<rect x="302.0" y="217.8" width="60" height="72.2" rx="3" fill="#3987e5"/>
+<text x="332.0" y="211.8" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="12" fill="#ffffff" text-anchor="middle">$0.09</text>
+<text x="332.0" y="306" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="11" fill="#898781" text-anchor="middle">200–300K</text>
+<text x="332.0" y="320" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="11" fill="#898781" text-anchor="middle">1,136 requests</text>
+<rect x="409.2" y="192.6" width="60" height="97.4" rx="3" fill="#3987e5"/>
+<text x="439.2" y="186.6" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="12" fill="#ffffff" text-anchor="middle">$0.12</text>
+<text x="439.2" y="306" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="11" fill="#898781" text-anchor="middle">300–400K</text>
+<text x="439.2" y="320" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="11" fill="#898781" text-anchor="middle">238 requests</text>
+<rect x="516.4" y="103.5" width="60" height="186.5" rx="3" fill="#3987e5"/>
+<text x="546.4" y="97.5" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="12" fill="#ffffff" text-anchor="middle">$0.22</text>
+<text x="546.4" y="306" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="11" fill="#898781" text-anchor="middle">400–500K</text>
+<text x="546.4" y="320" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="11" fill="#898781" text-anchor="middle">52 requests</text>
+</svg>
