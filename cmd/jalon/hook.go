@@ -171,7 +171,7 @@ func runPromptHook(ctx context.Context, args []string, stdin io.Reader, out io.W
 		tail := adapter.ReadTail(prompt, "", false)
 		st, ok := measure(dir, adapter, prompt, tail, cfg, now)
 		if !ok {
-			return nil
+			return writeBack(adapter, prompt, st)
 		}
 		// Only a session a person typed in is advised: in one a program drives, the
 		// reply is the program's output. A program that resumes a session a person
@@ -302,6 +302,34 @@ func runStopHook(ctx context.Context, args []string, stdin io.Reader, out io.Wri
 	})
 	_, _ = out.Write(b)
 	return nil
+}
+
+// writeBackNote reminds the model, on each prompt after the advice whose
+// handoff was written, to keep that handoff up to date: it is written in the
+// reply to the advised prompt, and what comes after would not be in it.
+const writeBackNote = `Jalon: the handoff {path} was written at the last advice of this conversation and is not resumed yet.
+Answer the user's message first. If this turn changes what the handoff records (current state, what was checked,
+decisions, next steps, the user's latest request), update it with a short edit at the end of the turn; otherwise
+leave it. Do not mention this note.`
+
+// writeBack is the prompt hook's output for a prompt that gets no advice: the
+// write-back note when the last advice's handoff was written and the session
+// has not been compacted since (a compaction resets LastAdvised), else
+// nothing. It writes nothing.
+func writeBack(adapter client.Adapter, p client.Prompt, st advisor.Session) []byte {
+	if st.Proposed == "" || st.LastAdvised == 0 {
+		return nil
+	}
+	handoffDir := handoffFolder(p.Dir)
+	written := lastHandoff(handoffDir, st.Proposed+"-")
+	if written == "" {
+		return nil
+	}
+	reply, err := adapter.Reply("", strings.ReplaceAll(writeBackNote, "{path}", filepath.Join(handoffDir, written)))
+	if err != nil {
+		return nil
+	}
+	return reply
 }
 
 // measure records the context size of the turn of p in the session's state,

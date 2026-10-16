@@ -56,6 +56,7 @@ Jalon advises; you act. It never:
 It writes only:
 
 - **the advice**, added to the model's context by the prompt hook, on a prompt you typed, when the threshold is crossed; or by the stop hook at the end of a turn you started, which makes the model go on once to add the section: when the threshold was crossed during the turn, or when the reply left out the section asked for. Only a session you typed in gets it: a session a program started with `claude -p` does not, but a program that resumes a session you typed in is not detected by the prompt hook;
+- **a note to keep the handoff up to date**, added by the prompt hook to the model's context on each prompt you type after the advice's handoff was written, until a compaction or the next advice;
 - **`.jalon/handoffs/`** in your project, with its `.gitignore`; the model writes the handoff files when you take that option;
 - **`~/.claude/settings.json`**, only when you run `jalon init`, with a `.jalon.bak` backup;
 - **`~/.claude/skills/jalon/`**, only when you run `jalon init --skill`: the `/jalon` skill, which only you invoke, so its description is not added to the starting context (checked with Claude Code 2.1.296); a later `jalon init` updates it, and never replaces a `jalon` skill it did not write;

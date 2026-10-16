@@ -98,6 +98,11 @@ func TestReply(t *testing.T) {
 	if string(b) != want {
 		t.Errorf("reply = %q, want %q", b, want)
 	}
+	// No message for the user: no systemMessage, rather than an empty one.
+	b, _ = Adapter{}.Reply("", "note")
+	if want := `{"hookSpecificOutput":{"additionalContext":"note","hookEventName":"UserPromptSubmit"}}` + "\n"; string(b) != want {
+		t.Errorf("reply = %q, want %q", b, want)
+	}
 }
 
 func TestReadStop(t *testing.T) {
