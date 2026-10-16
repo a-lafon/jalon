@@ -274,6 +274,75 @@ func TestReadDirSkipsAFileDeletedAfterTheListing(t *testing.T) {
 	}
 }
 
+func TestReadDirReadsTheSubagentsOfASession(t *testing.T) {
+	dir := t.TempDir()
+	subs := filepath.Join(dir, "p", "s1", "subagents")
+	if err := os.MkdirAll(subs, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	write := func(path string, lines ...string) {
+		t.Helper()
+		if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(filepath.Join(dir, "p", "s1.jsonl"), userText("2026-10-06T08:00:00Z", "x"), assistant("2026-10-06T08:00:01Z", "m1", 1, 100, 0, 5))
+	write(filepath.Join(subs, "agent-a.jsonl"),
+		sidechain(userText("2026-10-06T08:01:00Z", "task")),
+		sidechain(assistant("2026-10-06T08:01:01Z", "a1", 2, 10_000, 5_000, 5)),
+		sidechain(assistant("2026-10-06T08:01:01Z", "a1", 2, 10_000, 5_000, 5)), // a second content block
+		sidechain(assistant("2026-10-06T08:01:02Z", "a2", 2, 15_000, 3_000, 5)),
+		`{"type":"hologram"}`,
+	)
+	write(filepath.Join(subs, "agent-a.meta.json"), `{"agentType":"general-purpose","description":"not kept"}`)
+	write(filepath.Join(subs, "agent-b.jsonl"), sidechain(assistant("2026-10-06T08:02:00Z", "b1", 1, 0, 9_000, 5)))
+
+	r := NewReader()
+	convs, err := r.ReadDir(dir, time.Time{})
+	if err != nil || len(convs) != 1 {
+		t.Fatalf("convs = %+v, err %v", convs, err)
+	}
+	got := convs[0].Subagents
+	if len(got) != 2 || got[0].Type != "general-purpose" || got[1].Type != "" {
+		t.Fatalf("subagents = %+v, want general-purpose then one with no type", got)
+	}
+	if rs := got[0].Requests; len(rs) != 2 || rs[0].PromptTokens != 15_002 || rs[1].PromptTokens != 18_002 || rs[1].CacheRead != 15_000 {
+		t.Errorf("agent-a requests = %+v, want 15,002 then 18,002", rs)
+	}
+	if rs := got[1].Requests; len(rs) != 1 || rs[0].PromptTokens != 9_001 {
+		t.Errorf("agent-b requests = %+v, want 9,001", rs)
+	}
+	if len(convs[0].Requests) != 1 {
+		t.Errorf("main requests = %+v, want the session's own only", convs[0].Requests)
+	}
+	// 2 session lines, 6 subagent lines: 3 assistant used, 1 user known, 1 skipped.
+	if c := r.Coverage; c.Files != 1 || c.Read != 8 || c.Interpreted != 6 || c.Ignored != 1 || c.Skipped != 1 {
+		t.Errorf("coverage = %+v, want 1 file, 8 read, 6 used, 1 known, 1 skipped", c)
+	}
+
+	// A /clear copies agent-a into the next session, which adds a request.
+	subs2 := filepath.Join(dir, "p", "s2", "subagents")
+	if err := os.MkdirAll(subs2, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	write(filepath.Join(dir, "p", "s2.jsonl"), userText("2026-10-06T09:00:00Z", "x"), assistant("2026-10-06T09:00:01Z", "m2", 1, 100, 0, 5))
+	write(filepath.Join(subs2, "agent-a.jsonl"),
+		sidechain(assistant("2026-10-06T08:01:01Z", "a1", 2, 10_000, 5_000, 5)),
+		sidechain(assistant("2026-10-06T08:01:02Z", "a2", 2, 15_000, 3_000, 5)),
+		sidechain(assistant("2026-10-06T09:01:00Z", "a3", 2, 20_000, 3_000, 5)),
+	)
+	convs, err = NewReader().ReadDir(dir, time.Time{})
+	if err != nil || len(convs) != 2 {
+		t.Fatalf("convs = %+v, err %v", convs, err)
+	}
+	if got := convs[0].Subagents[0].Requests; len(got) != 2 {
+		t.Errorf("s1's agent-a = %+v, want its 2 requests", got)
+	}
+	if got := convs[1].Subagents[0].Requests; len(got) != 1 || got[0].PromptTokens != 23_002 {
+		t.Errorf("s2's copy = %+v, want the added request only", got)
+	}
+}
+
 func advice(uuid, ts, content string) string {
 	return fmt.Sprintf(`{"type":"attachment","uuid":%q,"timestamp":%q,"sessionId":"s1","attachment":{"type":"hook_system_message","content":%q,"hookName":"UserPromptSubmit","hookEvent":"UserPromptSubmit"}}`,
 		uuid, ts, content)

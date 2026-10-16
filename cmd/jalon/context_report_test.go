@@ -282,6 +282,49 @@ func TestContextReportSplitPrintsOnePeriodEach(t *testing.T) {
 	}
 }
 
+func TestContextReportSubagents(t *testing.T) {
+	now := time.Now()
+	at := func(m int) time.Time { return now.Add(-time.Duration(60-m) * time.Minute) }
+	dir := t.TempDir()
+	writeTranscript(t, dir, tUser(at(0)), tAssistant(at(1), "m1", 999_995))
+	subs := filepath.Join(dir, "-project", "session", "subagents")
+	if err := os.MkdirAll(subs, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for name, lines := range map[string][]string{
+		"agent-a.jsonl":     {tAssistant(at(2), "a1", 9_995), tAssistant(at(3), "a2", 19_995), tAssistant(at(4), "a3", 29_995)},
+		"agent-b.jsonl":     {tAssistant(at(5), "b1", 19_995), tAssistant(at(6), "b2", 249_995)},
+		"agent-b.meta.json": {`{"agentType":"general-purpose"}`},
+	} {
+		if err := os.WriteFile(filepath.Join(subs, name), []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var out bytes.Buffer
+	if err := runContextReport(context.Background(), []string{"-config", configWith(t, ""), "-since", "2h", "-transcripts", dir}, &out); err != nil {
+		t.Fatal(err)
+	}
+	section := out.String()[strings.Index(out.String(), "Subagents (transcripts)"):]
+	for _, want := range []string{
+		"2 subagents: 0.3M prompt tokens read, 25% of the 1.3M read in this period with the main conversations; first requests 9% of it",
+		"1 went past the advice threshold (+200,000 tokens above their first request): 82% of the subagents' prompt tokens",
+	} {
+		if !strings.Contains(section, want) {
+			t.Errorf("missing %q in:\n%s", want, section)
+		}
+	}
+	if b, a := strings.Index(section, "general-purpose  2"), strings.Index(section, "-                3"); b < 0 || a < 0 || b > a {
+		t.Errorf("want the general-purpose subagent listed first, then the one with no type:\n%s", section)
+	}
+
+	out.Reset()
+	if err := runContextReport(context.Background(), []string{"-config", configWith(t, ""), "-since", "2h", "-transcripts", t.TempDir()}, &out); err != nil ||
+		!strings.Contains(out.String(), "Subagents (transcripts)\n  none in this period") {
+		t.Errorf("err %v, want no subagent in:\n%s", err, out.String())
+	}
+}
+
 func TestGoldenImpact(t *testing.T) {
 	at := func(h, m int) time.Time { return time.Date(2026, 10, 9, h, m, 0, 0, time.Local) }
 	im := ctxreport.Impact{
