@@ -54,6 +54,16 @@ type Conversation struct {
 	Resume *Resume
 	// Writes are the Write tool uses of the main thread on a handoff file.
 	Writes []Write
+	// Subagents are the subagents of the session, read from their own files.
+	Subagents []Subagent
+}
+
+// Subagent is one subagent of a conversation, of which only the requests are
+// kept: their Turn is always 0.
+type Subagent struct {
+	// Type is the agentType of its meta file, "" when unknown.
+	Type     string
+	Requests []Request
 }
 
 // Advice is an advice a hook gave: the prompt hook's system message, or the
@@ -229,7 +239,90 @@ func (r *Reader) ReadFile(path string) (Conversation, error) {
 		return Conversation{}, err
 	}
 	defer f.Close()
-	return r.Read(path, f)
+	c, err := r.Read(path, f)
+	if err != nil {
+		return c, err
+	}
+	c.Subagents, err = r.readSubagents(path)
+	return c, err
+}
+
+// readSubagents reads the subagent files of a session file, in name order:
+// <session>/subagents/agent-*.jsonl, each with its .meta.json.
+func (r *Reader) readSubagents(session string) ([]Subagent, error) {
+	paths, err := filepath.Glob(filepath.Join(strings.TrimSuffix(session, ".jsonl"), "subagents", "agent-*.jsonl"))
+	if err != nil {
+		return nil, err
+	}
+	var out []Subagent
+	for _, p := range paths {
+		f, err := openFile(p)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue // deleted since it was listed
+		}
+		if err != nil {
+			return nil, err
+		}
+		s, err := r.readSubagent(p, f)
+		f.Close()
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, nil
+}
+
+// readSubagent reads the requests of one subagent file.
+func (r *Reader) readSubagent(path string, rd io.Reader) (Subagent, error) {
+	var s Subagent
+	if raw, err := os.ReadFile(strings.TrimSuffix(path, ".jsonl") + ".meta.json"); err == nil {
+		var meta struct {
+			AgentType string `json:"agentType"`
+		}
+		if json.Unmarshal(raw, &meta) == nil {
+			s.Type = meta.AgentType
+		}
+	}
+	br := bufio.NewReaderSize(rd, 1<<20)
+	for {
+		line, err := br.ReadBytes('\n')
+		if line = bytes.TrimSpace(line); len(line) > 0 {
+			r.Coverage.Read++
+			var e entry
+			switch {
+			case json.Unmarshal(line, &e) != nil || e.Type == "":
+				r.Coverage.Skipped++
+			case e.Type == "assistant":
+				var m message
+				ts, tsErr := time.Parse(time.RFC3339Nano, e.Timestamp)
+				if tsErr != nil || json.Unmarshal(e.Message, &m) != nil {
+					r.Coverage.Skipped++
+					break
+				}
+				r.Coverage.Interpreted++
+				// Another content block of a request already counted, here or in
+				// the copy of this subagent that a /clear leaves in the next session.
+				if m.Usage == nil || (m.ID != "" && r.seen["msg:"+m.ID]) {
+					break
+				}
+				if prompt := m.Usage.Input + m.Usage.CacheRead + m.Usage.CacheCreate; prompt > 0 {
+					r.seen["msg:"+m.ID] = m.ID != ""
+					s.Requests = append(s.Requests, Request{Time: ts, PromptTokens: prompt, CacheRead: m.Usage.CacheRead})
+				}
+			case e.Type == "user" || e.Type == "system" || ignoredTypes[e.Type]:
+				r.Coverage.Ignored++
+			default:
+				r.Coverage.Skipped++
+			}
+		}
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return s, nil
+			}
+			return s, fmt.Errorf("read %s: %w", path, err)
+		}
+	}
 }
 
 // entry is the part of a transcript line the reader looks at.

@@ -84,6 +84,7 @@ func runContextReport(ctx context.Context, args []string, out io.Writer) error {
 		}
 		printImpact(out, impact.Between(from, to))
 		printTranscriptPeriod(out, sim.Between(from, to), params)
+		printSubagents(out, ctxreport.SubagentsBetween(convs, params.Advisor.AdviseTokens, from, to), params.Advisor.AdviseTokens)
 	}
 	return nil
 }
@@ -279,6 +280,36 @@ func printTranscriptPeriod(out io.Writer, r ctxreport.Result, p ctxreport.Params
 		d := ctxreport.Distribution(by)
 		fmt.Fprintf(out, "  by requests, older than %d: p25 %s  p50 %s  p75 %s\n", age, cli.PercentOf(d.P25), cli.PercentOf(d.P50), cli.PercentOf(d.P75))
 	}
+}
+
+// maxSubagents is the number of subagents the subagents section lists.
+const maxSubagents = 5
+
+// printSubagents prints the subagents that started in a period: what they read
+// and how much of it was read by those that grew past the advice threshold.
+func printSubagents(out io.Writer, s ctxreport.Subagents, adviseTokens int) {
+	fmt.Fprintln(out, "\nSubagents (transcripts)")
+	if len(s.Runs) == 0 {
+		fmt.Fprintln(out, "  none in this period")
+		return
+	}
+	fmt.Fprintf(out, "  %s: %s prompt tokens read, %s of the %s read in this period with the main conversations; first requests %s of it\n",
+		cli.Plural(len(s.Runs), "subagent"), tokensM(s.Read), cli.PercentOf(shareOf(s.Read, s.Read+s.MainRead)),
+		tokensM(s.Read+s.MainRead), cli.PercentOf(shareOf(s.FirstRead, s.Read)))
+	fmt.Fprintf(out, "  %d went past the advice threshold (+%s tokens above their first request): %s of the subagents' prompt tokens; the hooks advise the main conversation only\n",
+		s.Past, cli.Thousands(int64(adviseTokens)), cli.PercentOf(shareOf(s.PastRead, s.Read)))
+	fmt.Fprintln(out, "  most read:")
+	w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(w, "    time\ttype\trequests\tfirst\tlargest\tread")
+	for _, r := range s.Runs[:min(len(s.Runs), maxSubagents)] {
+		kind := r.Type
+		if kind == "" {
+			kind = "-"
+		}
+		fmt.Fprintf(w, "    %s\t%s\t%d\t%s\t%s\t%s\n", r.Time.Local().Format("2006-01-02 15:04"), kind, r.Requests,
+			cli.TokensK(float64(r.First)), cli.TokensK(float64(r.Peak)), tokensM(r.Read))
+	}
+	w.Flush()
 }
 
 // maxProjects is the number of projects the starting size section lists.
