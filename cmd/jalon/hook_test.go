@@ -1214,6 +1214,44 @@ func TestStopHookSectionMissing(t *testing.T) {
 	})
 }
 
+func TestPromptHookAsksToKeepTheHandoffUpToDate(t *testing.T) {
+	t.Run("handoff not written", func(t *testing.T) {
+		repo, cfg, _ := advisedAt1748(t)
+		if got := runPrompt(t, cfg, promptInput("s1", "p2", repo)); got != "" {
+			t.Errorf("output = %q, want nothing", got)
+		}
+	})
+	t.Run("handoff written", func(t *testing.T) {
+		repo, cfg, prefix := advisedAt1748(t)
+		written := writeHandoff(t, repo, prefix+"-alpha-review-2.md")
+		var out struct {
+			SystemMessage *string `json:"systemMessage"`
+			Hook          struct {
+				Context string `json:"additionalContext"`
+			} `json:"hookSpecificOutput"`
+		}
+		if err := json.Unmarshal([]byte(runPrompt(t, cfg, promptInput("s1", "p2", repo))), &out); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.HasPrefix(out.Hook.Context, "Jalon: the handoff "+written+" was written") ||
+			!strings.Contains(out.Hook.Context, "update it with a short edit") || strings.Contains(out.Hook.Context, "{") {
+			t.Errorf("context = %q", out.Hook.Context)
+		}
+		// The user sees nothing: the note is for the model.
+		if out.SystemMessage != nil {
+			t.Errorf("systemMessage = %q, want none", *out.SystemMessage)
+		}
+	})
+	t.Run("after a compaction", func(t *testing.T) {
+		repo, cfg, prefix := advisedAt1748(t)
+		writeHandoff(t, repo, prefix+"-alpha-review-2.md")
+		appendTranscript(t, "s1", `{"type":"system","subtype":"compact_boundary","compactMetadata":{"trigger":"manual","postTokens":22000}}`+"\n")
+		if got := runPrompt(t, cfg, promptInput("s1", "p2", repo)); got != "" {
+			t.Errorf("output = %q, want nothing", got)
+		}
+	})
+}
+
 func TestStopHookNoReminderAfterACompaction(t *testing.T) {
 	repo, cfg, _ := advisedAt1748(t)
 	// Claude Code compacted during the turn: the advice is moot.

@@ -116,13 +116,16 @@ func (a Adapter) Commands() client.Commands {
 }
 
 func (Adapter) Reply(userMessage, modelContext string) ([]byte, error) {
-	return encode(map[string]any{
-		"systemMessage": userMessage,
+	out := map[string]any{
 		"hookSpecificOutput": map[string]any{
 			"hookEventName":     "UserPromptSubmit",
 			"additionalContext": modelContext,
 		},
-	})
+	}
+	if userMessage != "" {
+		out["systemMessage"] = userMessage
+	}
+	return encode(out)
 }
 
 // StopReply makes Claude Code go on with the turn: the reason reaches the model
