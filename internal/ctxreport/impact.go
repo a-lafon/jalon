@@ -189,9 +189,12 @@ func Impacts(convs []transcript.Conversation) Impact {
 	}
 	slices.SortStableFunc(im.Advices, func(a, b GivenAdvice) int { return a.Time.Compare(b.Time) })
 
-	for _, r := range rs {
+	for i, r := range rs {
 		if r.sameAs >= 0 {
 			r.Advised, r.Lead = rs[r.sameAs].Advised, rs[r.sameAs].Lead
+		}
+		if r.Kind == KindHandoff && r.Requests == 0 && resumedAgain(rs, i) {
+			continue // a try with no request after it: the same reset as the resume that went on
 		}
 		im.Resets = append(im.Resets, r.Reset)
 	}
@@ -199,6 +202,17 @@ func Impacts(convs []transcript.Conversation) Impact {
 		im.PromptRead += int64(q.PromptTokens)
 	}
 	return im
+}
+
+// resumedAgain reports whether another resume of rs[i]'s handoff, from the same
+// conversation, has requests after it.
+func resumedAgain(rs []reset, i int) bool {
+	for k, o := range rs {
+		if k != i && o.Kind == KindHandoff && o.from == rs[i].from && o.Path == rs[i].Path && o.Requests > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // parentOf is the index of the conversation a resume continues, -1 when none

@@ -205,6 +205,22 @@ func TestHandoffResumedTwice(t *testing.T) {
 	}
 }
 
+func TestHandoffResumeAbandonedThenResumedIsOneReset(t *testing.T) {
+	p := advisedParent()
+	at := t0.Add(3 * time.Hour)
+	tried := resumed("tried", handoffPath, at) // resumed, then left before any request
+	r := resumed("r", handoffPath, at.Add(time.Minute), 45000, 50000)
+	im := Impacts([]transcript.Conversation{p, tried, r})
+	if len(im.Resets) != 1 || im.Resets[0].Into != "r" || im.Resets[0].Requests != 2 || !im.Resets[0].Advised {
+		t.Errorf("resets = %+v, want the one resume that went on, advised", im.Resets)
+	}
+
+	alone := Impacts([]transcript.Conversation{p, tried})
+	if len(alone.Resets) != 1 || alone.Resets[0].Requests != 0 {
+		t.Errorf("resets = %+v, want the only resume kept", alone.Resets)
+	}
+}
+
 func TestCompactionOfTheResumedConversationEndsN(t *testing.T) {
 	p := advisedParent()
 	r := resumed("r", handoffPath, t0.Add(3*time.Hour), 45000, 90000, 150000, 30000, 35000)
