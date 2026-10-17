@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -36,6 +37,10 @@ func TestGoldenSummary(t *testing.T) {
 			floor("/t/-home-me-alpha", "~/alpha", 0, 55_000, 10_000_000, 4_000_000),
 			floor("/t/-home-me-beta", "~/beta", 1, 40_000, 10_000_000, 1_000_000),
 		},
+	}
+	sim.Resets[0].Prompts = []string{"go", "and the tests?"}
+	for i := range 17 {
+		sim.Resets[1].Prompts = append(sim.Resets[1].Prompts, fmt.Sprintf("step %d", i+1))
 	}
 	subs := ctxreport.Subagents{Runs: make([]ctxreport.SubagentRun, 6), Read: 8_000_000, PastRead: 3_000_000, Past: 2}
 	at2 := map[string]where{

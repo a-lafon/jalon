@@ -2,8 +2,9 @@
 // ~/.claude/projects. The format is internal to Claude Code and changes between
 // versions, so the reader keeps only what the context report needs, skips what
 // it cannot interpret and counts it, so a format change shows up as low coverage
-// instead of wrong numbers. It never keeps conversation text, only sizes, the
-// paths of handoff files and the working directory.
+// instead of wrong numbers. It keeps sizes, the paths of handoff files, the
+// working directory and the start of each prompt a person typed, no other
+// conversation text.
 package transcript
 
 import (
@@ -16,6 +17,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"sort"
 	"strings"
@@ -108,7 +110,12 @@ type Turn struct {
 	// Human is set when a person typed the prompt itself (origin kind "human"),
 	// the turns the stop hook acts on.
 	Human bool
+	// Prompt is the start of a prompt a person typed, on one line, "" for others.
+	Prompt string
 }
+
+// promptRunes is the length of the start of a typed prompt that a Turn keeps.
+const promptRunes = 120
 
 // Request is one assistant API request.
 type Request struct {
@@ -463,6 +470,7 @@ func (r *Reader) add(conv *Conversation, pending **Turn, lastMessageID *string, 
 					Advisable: conv.Human > 0 && (r.Typed == nil || r.Typed(promptText(m.Content)))}
 				if e.Origin != nil && e.Origin.Kind == "human" {
 					(*pending).Human = true
+					(*pending).Prompt = startOf(promptText(m.Content), promptRunes)
 					if conv.Human == 0 {
 						conv.Resume = resumeOf(m.Content, ts, len(conv.Turns), len(conv.Requests))
 					}
@@ -548,6 +556,28 @@ func promptText(raw json.RawMessage) string {
 		}
 	}
 	return text
+}
+
+var (
+	// ideContext is what an IDE adds to a prompt: the file opened, the selection.
+	ideContext = regexp.MustCompile(`(?s)<ide_\w+>.*?</ide_\w+>`)
+	pasted     = regexp.MustCompile(`(?s)<pasted_content[^>]*>.*?</pasted_content[^>]*>`)
+	// A slash command is recorded as its message, name and arguments in tags.
+	commandMessage = regexp.MustCompile(`(?s)<command-message>.*?</command-message>`)
+	commandTag     = regexp.MustCompile(`</?command-(name|args)>`)
+)
+
+// startOf is the first n runes of s without what an IDE added, with pasted
+// text marked, a slash command as typed, and its spaces and line breaks
+// collapsed, with … when it is cut.
+func startOf(s string, n int) string {
+	s = pasted.ReplaceAllString(ideContext.ReplaceAllString(s, ""), "[pasted]")
+	s = commandTag.ReplaceAllString(commandMessage.ReplaceAllString(s, ""), " ")
+	r := []rune(strings.Join(strings.Fields(s), " "))
+	if len(r) <= n {
+		return string(r)
+	}
+	return string(r[:n]) + "…"
 }
 
 // handoffWrites are the Write tool uses on a handoff file in the content of an

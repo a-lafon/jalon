@@ -19,6 +19,9 @@ const lateTurns = 10
 // maxLate is the number of late resets the summary lists.
 const maxLate = 3
 
+// maxPrompts is the number of prompts the summary lists for each late reset.
+const maxPrompts = 15
+
 // heavyShare is the share of the prompt tokens from which the summary advises
 // on the subagents or on the starting size.
 const heavyShare = 0.25
@@ -47,9 +50,15 @@ func wheres(convs []transcript.Conversation) map[string]where {
 // section it comes from.
 func printSummary(out io.Writer, title string, im ctxreport.Impact, sim ctxreport.Result, subs ctxreport.Subagents, at map[string]where, adviseTokens int) {
 	fmt.Fprintf(out, "\n%s\n", title)
-	notReRead, _, base := notReReadSums(im)
-	fmt.Fprintf(out, "  Saved: about %s prompt tokens not re-read thanks to %s, %s of what would have been read (Impact; estimate: assumes the conversations would have gone on the same way)\n",
-		tokensM(notReRead), cli.Plural(len(im.Resets), "reset"), cli.PercentOf(shareOf(notReRead, base)))
+	notReRead, advised, base := notReReadSums(im)
+	nAdvised := 0
+	for _, r := range im.Resets {
+		if r.Advised {
+			nAdvised++
+		}
+	}
+	fmt.Fprintf(out, "  Saved: about %s prompt tokens not re-read thanks to the %s that followed a Jalon advice; %s with all %d resets, %s of what would have been read (Impact; estimate: assumes the conversations would have gone on the same way)\n",
+		tokensM(advised), cli.Plural(nAdvised, "reset"), tokensM(notReRead), len(im.Resets), cli.PercentOf(shareOf(notReRead, base)))
 
 	var late []ctxreport.SimReset
 	var lateBeyond []float64
@@ -101,11 +110,23 @@ func printSummary(out io.Writer, title string, im ctxreport.Impact, sim ctxrepor
 				cli.Plural(r.Lead, "turn"), tokensKM(float64(r.Beyond)), wh.session)
 		}
 		w.Flush()
+		for _, r := range late[:min(len(late), maxLate)] {
+			if len(r.Prompts) == 0 {
+				continue
+			}
+			fmt.Fprintf(out, "  Typed after the advice, before the %s reset:\n", r.Time.Local().Format("2006-01-02 15:04"))
+			for i, p := range r.Prompts[:min(len(r.Prompts), maxPrompts)] {
+				fmt.Fprintf(out, "    %d. %s\n", i+1, p)
+			}
+			if n := len(r.Prompts) - maxPrompts; n > 0 {
+				fmt.Fprintf(out, "    and %d more\n", n)
+			}
+		}
 	}
 
 	var todo []string
 	if len(late) > 0 {
-		todo = append(todo, fmt.Sprintf("Take the reset when the advice comes: the late resets read %s past it. Reopen one above, from its project, to see what held it.", tokensM(lateRead)))
+		todo = append(todo, fmt.Sprintf("Take the reset when the advice comes: the late resets read %s past it; the prompts typed after the advice, above, show what held each one.", tokensM(lateRead)))
 	}
 	if len(subs.Runs) > 0 && subShare >= heavyShare {
 		todo = append(todo, fmt.Sprintf("Give subagents smaller tasks: the %d that grew past +%s tokens read %s of the subagents' prompt tokens, and Jalon cannot advise them.",

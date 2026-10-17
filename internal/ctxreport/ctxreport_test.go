@@ -2,6 +2,7 @@ package ctxreport
 
 import (
 	"math"
+	"slices"
 	"testing"
 	"time"
 
@@ -54,6 +55,10 @@ func TestLeadAndTokensBeyondTheAdvisedSize(t *testing.T) {
 	// user compacts after turn 5 (turns 0..5 exist).
 	c := conv("a", 100, 50000, 120000, 210000, 260000, 280000, 300000)
 	compactAfter(&c, 6, "manual", 300000)
+	for i := range c.Turns {
+		c.Turns[i].Prompt = string(rune('a' + i))
+	}
+	c.Turns[4].Prompt = "" // a prompt no person typed
 
 	res := Simulate([]transcript.Conversation{c}, params)
 	if len(res.Resets) != 1 {
@@ -62,6 +67,10 @@ func TestLeadAndTokensBeyondTheAdvisedSize(t *testing.T) {
 	got := res.Resets[0]
 	if !got.Advised || got.Lead != 3 {
 		t.Errorf("lead = %d (advised %v), want 3 turns after the advised one", got.Lead, got.Advised)
+	}
+	// The prompts typed after the advised turn 2: turns 3 and 5.
+	if !slices.Equal(got.Prompts, []string{"d", "f"}) {
+		t.Errorf("prompts = %q, want d and f", got.Prompts)
 	}
 	// Requests of turns 2..5 beyond the 210K of the advice: 0 + 50K + 70K + 90K.
 	if got.Beyond != 210000 {

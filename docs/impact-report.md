@@ -16,15 +16,15 @@ jalon context-report [--since 7d] [--transcripts dir] [--split t1,t2] [--stop-ho
 
 The report opens with a summary of the whole window, each line naming the section it comes from:
 
-- **Saved**: the prompt tokens the resets kept from being read again, an estimate (see Impact).
+- **Saved**: the prompt tokens the resets kept from being read again, and the part of it from those that followed an advice, an estimate (see Impact).
 - **Late**: the resets that came 10 user turns or more after the advice, at the current thresholds, and the prompt tokens their requests read past it, against those taken within one turn.
 - **Ignored**: the advices no reset followed.
 - **Subagents**: those that grew past the threshold, which no hook advises.
 - **Starting size**: the share of the prompt tokens that was the conversations' starting size, and the project that starts heaviest.
-- **Late resets to reopen**: the three that read the most past the advice, with their working directory and `claude --resume <session>`, to see what held them.
+- **Late resets to reopen**: the three that read the most past the advice, with their working directory and `claude --resume <session>`, then the start of each prompt you typed between the advice and the reset, at most 15 for each, which shows what held it.
 - **To do**: the actions these lines call for, the most direct first: take the reset when the advice comes, when some came late; give subagents smaller tasks, when those past the threshold read 25% or more of the subagents' prompt tokens; trim what the heaviest project loads at start, when the starting size is 25% or more of the prompt tokens.
 
-The summary names your projects and session IDs: check it before you paste a report anywhere.
+The summary names your projects and session IDs, and quotes the start of some of your prompts: check it before you paste a report anywhere.
 
 ## Impact
 
