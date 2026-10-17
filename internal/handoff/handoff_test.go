@@ -62,7 +62,7 @@ func TestSessionOf(t *testing.T) {
 		}
 		return p
 	}
-	if got := SessionOf(write("a.md", "Follows: x.md\nSession: 0854fb51\n\n# Handoff\n")); got != "0854fb51" {
+	if got := SessionOf(write("a.md", "Follows: x.md\nSession: a1b2c3d4\n\n# Handoff\n")); got != "a1b2c3d4" {
 		t.Errorf("session = %q", got)
 	}
 	late := write("b.md", "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\nSession: s\n")
