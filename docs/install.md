@@ -1,6 +1,6 @@
 # Installing Jalon
 
-Every way ends with `jalon init`, which adds the hooks and the status line to `~/.claude/settings.json`; `jalon init --dry-run` shows what it would change first. Add `--skill` to install the `/jalon-*` commands too, in `~/.claude/skills/jalon-*/`.
+Every way ends with `jalon init`, which adds the hooks and the status line to `~/.claude/settings.json`, and the `/jalon-*` commands in `~/.claude/skills/jalon-*/`; `jalon init --dry-run` shows what it would change first.
 
 ## Homebrew
 

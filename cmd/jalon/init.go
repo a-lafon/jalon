@@ -27,9 +27,9 @@ var (
 
 // runInit runs "jalon init": it installs Jalon's hooks and its status line into
 // the client's settings, or with -mod the client's mod in place of the status
-// line, and with -skill the client's skills, or removes them all with
+// line, and the client's skills unless -skill=false, or removes them all with
 // -uninstall. A rerun without -mod or -statusline keeps a mod the settings
-// record, and without -skill updates the skills when Jalon wrote any. After an install it
+// record, and with -skill=false updates the skills when Jalon wrote any. After an install it
 // prints the advisor's thresholds, which -advise-tokens and -advise-step-tokens
 // set in the config file.
 func runInit(args []string, out io.Writer) error {
@@ -37,7 +37,7 @@ func runInit(args []string, out io.Writer) error {
 	clientName := flags.String("client", defaultClient, "coding agent to install Jalon into")
 	statusLine := flags.Bool("statusline", true, "install the status line (terminal only; never replaces another one)")
 	mod := flags.Bool("mod", false, "install the client's mod in place of the status line (Claude Code 2.1.292 or later; downloads it from GitHub)")
-	skill := flags.Bool("skill", false, "install the /jalon-* commands: resume, recap, handoff, report, help (Claude Code: ~/.claude/skills/jalon-*/)")
+	skill := flags.Bool("skill", true, "install the /jalon-* commands: resume, recap, handoff, report, help (Claude Code: ~/.claude/skills/jalon-*/); -skill=false leaves them out")
 	uninstall := flags.Bool("uninstall", false, "remove what Jalon installed")
 	dryRun := flags.Bool("dry-run", false, "print what would change, write nothing")
 	settingsPath := flags.String("settings", "", "client settings file (default: the client's user settings)")
@@ -48,7 +48,7 @@ func runInit(args []string, out io.Writer) error {
 	}
 	// Only the threshold flags given are set: 0 is a value to refuse, not "unset".
 	var tokens, stepTokens *int
-	statusLineSet := false
+	statusLineSet, skillSet := false, false
 	flags.Visit(func(f *flag.Flag) {
 		switch f.Name {
 		case "advise-tokens":
@@ -57,6 +57,8 @@ func runInit(args []string, out io.Writer) error {
 			stepTokens = adviseStepTokens
 		case "statusline":
 			statusLineSet = true
+		case "skill":
+			skillSet = true
 		}
 	})
 	setThresholds := tokens != nil || stepTokens != nil
@@ -94,7 +96,9 @@ func runInit(args []string, out io.Writer) error {
 		}
 	}
 	skillInstaller, hasSkill := adapter.(client.SkillInstaller)
-	if *skill && !hasSkill {
+	// The skills are installed by default where the client takes them: only an
+	// explicit -skill is refused by a client without.
+	if *skill && skillSet && !hasSkill {
 		return fmt.Errorf("%s has no skill; nothing written", *clientName)
 	}
 	path := *settingsPath

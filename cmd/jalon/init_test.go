@@ -743,7 +743,8 @@ func TestInitSkill(t *testing.T) {
 	withExecutable(t, testExe)
 	settings := filepath.Join(t.TempDir(), "settings.json")
 	skills := jalonSkills(t)
-	out := runInitOK(t, "-settings", settings, "-skill")
+	// A plain init installs them.
+	out := runInitOK(t, "-settings", settings)
 	for _, sk := range skills {
 		if !strings.Contains(out, "Wrote "+sk.Path+".") {
 			t.Errorf("output lacks %s:\n%s", sk.Path, out)
@@ -757,14 +758,16 @@ func TestInitSkill(t *testing.T) {
 	}
 	checkSkills(t, skills)
 
-	// A rerun without -skill keeps them and writes nothing.
-	out = runInitOK(t, "-settings", settings)
-	for _, sk := range skills {
-		if !strings.Contains(out, sk.Path+": nothing to change.") {
-			t.Errorf("rerun output lacks %s:\n%s", sk.Path, out)
-		}
-		if _, err := os.Stat(sk.Path + ".jalon.bak"); !errors.Is(err, os.ErrNotExist) {
-			t.Errorf("the rerun wrote a backup of %s", sk.Path)
+	// A rerun keeps them and writes nothing, as does one with -skill=false.
+	for _, args := range [][]string{{}, {"-skill=false"}} {
+		out = runInitOK(t, append([]string{"-settings", settings}, args...)...)
+		for _, sk := range skills {
+			if !strings.Contains(out, sk.Path+": nothing to change.") {
+				t.Errorf("rerun %v output lacks %s:\n%s", args, sk.Path, out)
+			}
+			if _, err := os.Stat(sk.Path + ".jalon.bak"); !errors.Is(err, os.ErrNotExist) {
+				t.Errorf("the rerun %v wrote a backup of %s", args, sk.Path)
+			}
 		}
 	}
 }
@@ -814,7 +817,7 @@ func TestInitUpdatesTheSkills(t *testing.T) {
 
 func TestInitWithoutTheSkill(t *testing.T) {
 	withExecutable(t, testExe)
-	if out := runInitOK(t, "-settings", filepath.Join(t.TempDir(), "settings.json")); strings.Contains(out, "skill") {
+	if out := runInitOK(t, "-settings", filepath.Join(t.TempDir(), "settings.json"), "-skill=false"); strings.Contains(out, "skill") {
 		t.Errorf("output = %q", out)
 	}
 	if _, err := os.Stat(filepath.Dir(filepath.Dir(jalonSkills(t)[0].Path))); !errors.Is(err, os.ErrNotExist) {
@@ -822,8 +825,30 @@ func TestInitWithoutTheSkill(t *testing.T) {
 	}
 }
 
+func TestInitClientWithoutASkill(t *testing.T) {
+	withExecutable(t, testExe)
+	// Claude Code's hooks and settings, without its skills or mod.
+	adapters["hooks-only"] = struct {
+		client.Adapter
+		client.Installer
+	}{claudecode.Adapter{}, claudecode.Adapter{}}
+	t.Cleanup(func() { delete(adapters, "hooks-only") })
+	settings := filepath.Join(t.TempDir(), "settings.json")
+
+	// The default skills are skipped where the client has none.
+	runInitOK(t, "-settings", settings, "-client", "hooks-only")
+	if b, _ := os.ReadFile(settings); !strings.Contains(string(b), "hook prompt") {
+		t.Errorf("settings = %s", b)
+	}
+	// An explicit -skill is refused.
+	var out bytes.Buffer
+	if err := runInit([]string{"-settings", settings, "-client", "hooks-only", "-skill"}, &out); err == nil || !strings.Contains(err.Error(), "hooks-only has no skill") {
+		t.Errorf("err = %v", err)
+	}
+}
+
 func TestInitLeavesSomeoneElsesSkill(t *testing.T) {
-	for _, args := range [][]string{{"-skill"}, {}, {"-uninstall"}} {
+	for _, args := range [][]string{{}, {"-skill=false"}, {"-uninstall"}} {
 		t.Run(strings.Join(append([]string{"init"}, args...), " "), func(t *testing.T) {
 			withExecutable(t, testExe)
 			skills := jalonSkills(t)
@@ -835,15 +860,15 @@ func TestInitLeavesSomeoneElsesSkill(t *testing.T) {
 			out := runInitOK(t, append([]string{"-settings", settings}, args...)...)
 			switch {
 			case len(args) == 0:
-				// No skill of Jalon's is there, so none is written.
-				if _, err := os.Stat(skills[0].Path); !errors.Is(err, os.ErrNotExist) {
-					t.Errorf("skill written: %v", err)
-				}
-			case args[0] == "-skill":
 				if want := "skill: " + help + " is in the way, a skill not written by Jalon; left as is"; !strings.Contains(out, want) {
 					t.Errorf("output lacks %q:\n%s", want, out)
 				}
 				checkSkills(t, skills[:4])
+			case args[0] == "-skill=false":
+				// No skill of Jalon's is there, so none is written.
+				if _, err := os.Stat(skills[0].Path); !errors.Is(err, os.ErrNotExist) {
+					t.Errorf("skill written: %v", err)
+				}
 			case args[0] == "-uninstall":
 				if want := "skill: " + help + " not written by Jalon, left as is"; !strings.Contains(out, want) {
 					t.Errorf("output lacks %q:\n%s", want, out)

@@ -131,7 +131,17 @@ func TestInitInAFreshHomeWritesTheSettingsAndTheConfig(t *testing.T) {
 	withExecutable(t, testExe)
 	home, _ := os.UserHomeDir()
 	runInitOK(t, "-statusline", "-advise-tokens", "200000")
-	expectFiles(t, "init", tree(t, home), ".claude/", ".claude/settings.json", ".jalon/", ".jalon/config.yaml")
+	expectFiles(t, "init", tree(t, home), slices.Concat([]string{".claude/", ".claude/settings.json"}, skillTree, []string{".jalon/", ".jalon/config.yaml"})...)
+}
+
+// skillTree is what the /jalon-* skills add to the home, in tree order.
+var skillTree = []string{
+	".claude/skills/",
+	".claude/skills/jalon-handoff/", ".claude/skills/jalon-handoff/SKILL.md",
+	".claude/skills/jalon-help/", ".claude/skills/jalon-help/SKILL.md",
+	".claude/skills/jalon-recap/", ".claude/skills/jalon-recap/SKILL.md",
+	".claude/skills/jalon-report/", ".claude/skills/jalon-report/SKILL.md",
+	".claude/skills/jalon-resume/", ".claude/skills/jalon-resume/SKILL.md",
 }
 
 func TestInitOverExistingFilesAddsOnlyTheirBackups(t *testing.T) {
@@ -150,7 +160,8 @@ func TestInitOverExistingFilesAddsOnlyTheirBackups(t *testing.T) {
 	}
 	before := tree(t, home)
 	runInitOK(t, "-statusline", "-advise-tokens", "200000")
-	expectFiles(t, "init", created(t, home, before), ".claude/settings.json.jalon.bak", ".jalon/config.yaml.jalon.bak")
+	// The skills are new, not backups: Jalon writes them whole, rebuilt from the binary.
+	expectFiles(t, "init", created(t, home, before), slices.Concat([]string{".claude/settings.json.jalon.bak"}, skillTree, []string{".jalon/config.yaml.jalon.bak"})...)
 }
 
 func TestStopHookAdvisingWritesTheStateAndTheHandoffFolder(t *testing.T) {
