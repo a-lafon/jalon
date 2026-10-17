@@ -2,26 +2,30 @@ package claudecode
 
 import (
 	"bytes"
-	"embed"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/a-lafon/jalon/internal/client"
 	"github.com/a-lafon/jalon/internal/client/hookjson"
+	"github.com/a-lafon/jalon/internal/client/skilltext"
 )
 
 var _ client.SkillInstaller = Adapter{}
 
-// skills are Jalon's user skills, which only the user invokes.
-//
-//go:embed skills
-var skills embed.FS
-
-// skillNames is the set jalon init installs, in the order it prints them.
-var skillNames = []string{"jalon-resume", "jalon-recap", "jalon-handoff", "jalon-report", "jalon-help"}
-
 // skillMarker is the line that tells a skill Jalon wrote from someone else's.
-const skillMarker = "<!-- Written by jalon init, which overwrites edits; jalon init --uninstall removes it. -->"
+const skillMarker = "<!-- " + skilltext.Marker + " -->"
+
+// words are Claude Code's in the skills' text.
+var words = skilltext.Words{
+	Prefix:      "/",
+	Args:        "$ARGUMENTS",
+	Client:      "Claude Code",
+	Init:        "jalon init",
+	Installs:    "the hooks, the status line or mod, and these commands",
+	Transcripts: "transcripts",
+	StatusLine:  "- `jalon statusline`: the context size, for the status line.\n",
+}
 
 // skillsDir is the folder of the user skills, which apply to every project.
 func skillsDir() (string, error) {
@@ -42,19 +46,25 @@ func skillPath(name string) (string, error) {
 }
 
 // Skills fills {jalon} with exe, quoted for the shell as in the hooks, so
-// /jalon-report runs the binary the hooks run.
+// /jalon-report runs the binary the hooks run. Only the user invokes them.
 func (Adapter) Skills(exe string) ([]client.Skill, error) {
+	set, err := skilltext.Skills(hookjson.QuoteExe(exe), words)
+	if err != nil {
+		return nil, err
+	}
 	var out []client.Skill
-	for _, name := range skillNames {
-		content, err := skills.ReadFile("skills/" + name + "/SKILL.md")
+	for _, sk := range set {
+		path, err := skillPath(sk.Name)
 		if err != nil {
 			return nil, err
 		}
-		path, err := skillPath(name)
-		if err != nil {
-			return nil, err
+		var b strings.Builder
+		b.WriteString("---\nname: " + sk.Name + "\ndescription: " + sk.Description + "\n")
+		if sk.ArgumentHint != "" {
+			b.WriteString("argument-hint: \"" + sk.ArgumentHint + "\"\n")
 		}
-		out = append(out, client.Skill{Path: path, Content: bytes.ReplaceAll(content, []byte("{jalon}"), []byte(hookjson.QuoteExe(exe)))})
+		b.WriteString("disable-model-invocation: true\n---\n\n" + skillMarker + "\n\n" + sk.Body)
+		out = append(out, client.Skill{Path: path, Content: []byte(b.String())})
 	}
 	return out, nil
 }
