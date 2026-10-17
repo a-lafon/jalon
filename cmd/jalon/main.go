@@ -21,6 +21,9 @@ Usage:
   jalon context-report [-since 7d] [-transcripts dir] [-split t1,t2]
                        [-stop-hook=false] [-config path]
       compare reset advice with the resets you did
+  jalon handoffs [-thread] [path or words]
+      print this project's latest handoff, or the one named, or with -thread
+      its whole thread back to the first handoff
   jalon statusline [-client name] [-config path]
       print the context size for a status line (reads its JSON on stdin)
   jalon hook prompt [-client name] [-config path]
@@ -51,6 +54,11 @@ func main() {
 		}
 	case "context-report":
 		if err := runContextReport(ctx, os.Args[2:], os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, "jalon:", err)
+			os.Exit(1)
+		}
+	case "handoffs":
+		if err := runHandoffs(os.Args[2:], os.Stdout); err != nil {
 			fmt.Fprintln(os.Stderr, "jalon:", err)
 			os.Exit(1)
 		}
