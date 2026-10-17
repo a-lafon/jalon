@@ -10,8 +10,6 @@ import (
 	"github.com/a-lafon/jalon/internal/client/skilltext"
 )
 
-var _ client.SkillInstaller = Adapter{}
-
 // words are Codex's in the skills' text. Codex passes a skill no arguments: the
 // skill comes with the user's message, which holds them after the command.
 var words = skilltext.Words{
