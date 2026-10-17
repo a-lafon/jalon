@@ -236,23 +236,7 @@ func newClaude(t *testing.T, typed bool, script ...step) *claudeEnv {
 		}
 		t.Skip("claude is not on the PATH")
 	}
-	buildOnce.Do(func() {
-		// A folder of this run's own, so two runs never run each other's build.
-		dir, err := os.MkdirTemp("", "jalon-e2e-")
-		if err != nil {
-			buildErr = err
-			return
-		}
-		afterTests = append(afterTests, dir)
-		jalonBin = filepath.Join(dir, "jalon")
-		out, err := exec.Command("go", "build", "-o", jalonBin, ".").CombinedOutput()
-		if err != nil {
-			buildErr = fmt.Errorf("go build: %v\n%s", err, out)
-		}
-	})
-	if buildErr != nil {
-		t.Fatal(buildErr)
-	}
+	buildJalon(t)
 	// The project's real path: Claude Code gives the hooks the resolved one
 	// (/private/var on macOS, where the temp folder is under the /var symlink).
 	project, err := filepath.EvalSymlinks(t.TempDir())
@@ -266,13 +250,7 @@ func newClaude(t *testing.T, typed bool, script ...step) *claudeEnv {
 	if out, err := exec.Command("git", "init", "-q", e.project).CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v\n%s", err, out)
 	}
-	if err := os.MkdirAll(filepath.Join(e.home, ".jalon"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(e.home, ".jalon", "config.yaml"),
-		[]byte("context:\n  advise_tokens: 50000\n  advise_step_tokens: 50000\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	writeE2EConfig(t, e.home)
 	hook := func(event string) string {
 		if typed {
 			self, err := os.Executable()
@@ -295,6 +273,40 @@ func newClaude(t *testing.T, typed bool, script ...step) *claudeEnv {
 		t.Fatal(err)
 	}
 	return e
+}
+
+// writeE2EConfig gives home the thresholds the scenarios are built against.
+func writeE2EConfig(t *testing.T, home string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(home, ".jalon"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".jalon", "config.yaml"),
+		[]byte("context:\n  advise_tokens: 50000\n  advise_step_tokens: 50000\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// buildJalon builds the jalon binary the clients' hooks run, once per run.
+func buildJalon(t *testing.T) {
+	t.Helper()
+	buildOnce.Do(func() {
+		// A folder of this run's own, so two runs never run each other's build.
+		dir, err := os.MkdirTemp("", "jalon-e2e-")
+		if err != nil {
+			buildErr = err
+			return
+		}
+		afterTests = append(afterTests, dir)
+		jalonBin = filepath.Join(dir, "jalon")
+		out, err := exec.Command("go", "build", "-o", jalonBin, ".").CombinedOutput()
+		if err != nil {
+			buildErr = fmt.Errorf("go build: %v\n%s", err, out)
+		}
+	})
+	if buildErr != nil {
+		t.Fatal(buildErr)
+	}
 }
 
 // run sends one prompt with claude -p, resuming the session after the first,
@@ -341,12 +353,15 @@ func (e *claudeEnv) session() string {
 }
 
 // state is Jalon's state file of the session.
-func (e *claudeEnv) state() map[string]any {
-	e.t.Helper()
+func (e *claudeEnv) state() map[string]any { return readState(e.t, e.home, e.session()) }
+
+// readState is Jalon's state file of session under home.
+func readState(t *testing.T, home, session string) map[string]any {
+	t.Helper()
 	var st map[string]any
-	b, err := os.ReadFile(filepath.Join(e.home, ".jalon", "sessions", e.session()+".json"))
+	b, err := os.ReadFile(filepath.Join(home, ".jalon", "sessions", session+".json"))
 	if err != nil || json.Unmarshal(b, &st) != nil {
-		e.t.Fatalf("state: %v %s", err, b)
+		t.Fatalf("state: %v %s", err, b)
 	}
 	return st
 }

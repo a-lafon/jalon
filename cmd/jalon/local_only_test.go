@@ -144,6 +144,22 @@ var skillTree = []string{
 	".claude/skills/jalon-resume/", ".claude/skills/jalon-resume/SKILL.md",
 }
 
+func TestInitCodexInAFreshHomeWritesTheHooksAndSkillsAndUninstallRemovesThem(t *testing.T) {
+	withExecutable(t, testExe)
+	home, _ := os.UserHomeDir()
+	runInitOK(t, "-client", "codex")
+	var skills []string
+	for _, name := range []string{"jalon-handoff", "jalon-help", "jalon-recap", "jalon-report", "jalon-resume"} {
+		d := ".agents/skills/" + name + "/"
+		skills = append(skills, d, d+"SKILL.md", d+"agents/", d+"agents/openai.yaml")
+	}
+	expectFiles(t, "init", tree(t, home), slices.Concat([]string{".agents/", ".agents/skills/"}, skills, []string{".codex/", ".codex/hooks.json"})...)
+	runInitOK(t, "-client", "codex", "-uninstall")
+	// The hooks file stays, emptied, with its backup; the skills folder Codex
+	// reads stays too, empty.
+	expectFiles(t, "uninstall", tree(t, home), ".agents/", ".agents/skills/", ".codex/", ".codex/hooks.json", ".codex/hooks.json.jalon.bak")
+}
+
 func TestInitOverExistingFilesAddsOnlyTheirBackups(t *testing.T) {
 	withExecutable(t, testExe)
 	home, _ := os.UserHomeDir()

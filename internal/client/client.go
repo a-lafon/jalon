@@ -111,9 +111,11 @@ type Adapter interface {
 }
 
 // Installer is implemented by adapters that can install Jalon's commands into
-// their client's settings. jalon init reads and writes the file; an Installer
-// only transforms its content, and returns it unchanged when nothing changes.
+// their client's settings, and its skills. jalon init reads and writes the
+// files; an Installer only transforms their content, and returns it unchanged
+// when nothing changes.
 type Installer interface {
+	SkillInstaller
 	// SettingsPath is the client's default settings file.
 	SettingsPath() (string, error)
 	// Install returns the settings with the hooks running exe, and what
@@ -158,9 +160,8 @@ type ModInstaller interface {
 	ReadMod(settings []byte) ModState
 }
 
-// SkillInstaller is implemented by adapters whose client takes user skills,
-// which give Jalon's commands to the user. jalon init reads and writes the
-// files; a SkillInstaller only gives their paths and content.
+// SkillInstaller is the part of an Installer that gives the user skills,
+// Jalon's commands for the user: their paths and content.
 type SkillInstaller interface {
 	// Skills is Jalon's set of skills, each file in the user's client folder
 	// with the content jalon init writes; exe is the jalon the hooks run.

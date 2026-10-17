@@ -1,6 +1,7 @@
 package claudecode
 
 import (
+	"bytes"
 	"encoding/json"
 	"reflect"
 	"slices"
@@ -8,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/a-lafon/jalon/internal/client"
+	"github.com/a-lafon/jalon/internal/client/hookjson"
 )
 
 const exe = "/opt/homebrew/bin/jalon"
@@ -42,13 +44,21 @@ func hookCommands(t *testing.T, settings []byte, event string) []string {
 
 func keys(t *testing.T, settings []byte) []string {
 	t.Helper()
-	o, err := parseObject(settings)
-	if err != nil {
+	dec := json.NewDecoder(bytes.NewReader(settings))
+	if _, err := dec.Token(); err != nil {
 		t.Fatal(err)
 	}
 	var ks []string
-	for _, m := range o {
-		ks = append(ks, m.key)
+	for dec.More() {
+		tok, err := dec.Token()
+		if err != nil {
+			t.Fatal(err)
+		}
+		ks = append(ks, tok.(string))
+		var value json.RawMessage
+		if err := dec.Decode(&value); err != nil {
+			t.Fatal(err)
+		}
 	}
 	return ks
 }
@@ -120,8 +130,8 @@ func TestInstallKeepsOtherKeysAndHooks(t *testing.T) {
 	if !strings.Contains(out, `"rtk hook claude"`) || !strings.Contains(out, `"A": "<b>&"`) {
 		t.Errorf("other values changed:\n%s", out)
 	}
-	hooks, _ := parseObject([]byte(out))
-	raw, _ := hooks.get("hooks")
+	hooks, _ := hookjson.ParseObject([]byte(out))
+	raw, _ := hooks.Get("hooks")
 	if got, want := keys(t, raw), []string{"PreToolUse", "UserPromptSubmit", "Stop"}; !slices.Equal(got, want) {
 		t.Errorf("hooks keys = %v, want %v", got, want)
 	}
@@ -156,7 +166,7 @@ func TestInstallUpdatesExistingEntry(t *testing.T) {
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			in := `{"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":` + jsonString(tt.cmd) + `,"timeout":5}]}]}}`
+			in := `{"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":` + hookjson.JSONString(tt.cmd) + `,"timeout":5}]}]}}`
 			out, _ := install(t, in, client.NoDisplay)
 			if got := promptCommands(t, []byte(out)); !slices.Equal(got, []string{tt.want}) {
 				t.Errorf("prompt hooks = %v, want [%s]", got, tt.want)
@@ -170,7 +180,7 @@ func TestInstallUpdatesExistingEntry(t *testing.T) {
 
 func TestInstallLeavesLookalikes(t *testing.T) {
 	for _, cmd := range []string{"jalon statusline", "jalonx hook prompt", "/bin/jalon hook", "echo jalon hook prompt", `"/unclosed/jalon hook prompt`} {
-		in := `{"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":` + jsonString(cmd) + `}]}]}}`
+		in := `{"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":` + hookjson.JSONString(cmd) + `}]}]}}`
 		out, _ := install(t, in, client.NoDisplay)
 		if got := promptCommands(t, []byte(out)); len(got) != 2 || got[0] != cmd {
 			t.Errorf("%q: prompt hooks = %v, want it kept and Jalon's added", cmd, got)
@@ -201,7 +211,7 @@ func TestInstallQuotesWhatTheShellWouldRead(t *testing.T) {
 			if got := promptCommands(t, out); !slices.Equal(got, want) {
 				t.Errorf("prompt hooks = %v, want %v", got, want)
 			}
-			if !strings.Contains(string(out), jsonString(tt.want+" statusline --client claude-code")) {
+			if !strings.Contains(string(out), hookjson.JSONString(tt.want+" statusline --client claude-code")) {
 				t.Errorf("status line is not %s statusline:\n%s", tt.want, out)
 			}
 			if again, _, _ := (Adapter{}).Install(out, tt.exe, client.StatusLine); string(again) != string(out) {
@@ -251,13 +261,13 @@ func TestInstallRefusesAPathItCannotQuote(t *testing.T) {
 
 func TestInstallStatusLine(t *testing.T) {
 	statusCmd := func(t *testing.T, out string) string {
-		o, _ := parseObject([]byte(out))
-		raw, ok := o.get("statusLine")
+		o, _ := hookjson.ParseObject([]byte(out))
+		raw, ok := o.Get("statusLine")
 		if !ok {
 			return ""
 		}
-		sl, _ := parseObject(raw)
-		return sl.str("command")
+		sl, _ := hookjson.ParseObject(raw)
+		return sl.Str("command")
 	}
 	t.Run("not requested", func(t *testing.T) {
 		if out, _ := install(t, `{}`, client.NoDisplay); statusCmd(t, out) != "" {
@@ -374,7 +384,7 @@ func TestInstallStopHook(t *testing.T) {
 	})
 	t.Run("lookalikes", func(t *testing.T) {
 		for _, cmd := range []string{"jalon hook stopwatch", "jalon hook prompt", "jalonx hook stop"} {
-			in := `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":` + jsonString(cmd) + `}]}]}}`
+			in := `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":` + hookjson.JSONString(cmd) + `}]}]}}`
 			out, _ := install(t, in, client.NoDisplay)
 			if got := hookCommands(t, []byte(out), "Stop"); !slices.Equal(got, []string{cmd, stopCmd}) {
 				t.Errorf("%q: stop hooks = %v, want it kept and Jalon's added", cmd, got)
@@ -405,8 +415,8 @@ func TestUninstall(t *testing.T) {
 	if got, want := keys(t, out), []string{"hooks"}; !slices.Equal(got, want) {
 		t.Errorf("keys = %v, want %v", got, want)
 	}
-	root, _ := parseObject(out)
-	if raw, _ := root.get("hooks"); !slices.Equal(keys(t, raw), []string{"PreToolUse", "UserPromptSubmit"}) {
+	root, _ := hookjson.ParseObject(out)
+	if raw, _ := root.Get("hooks"); !slices.Equal(keys(t, raw), []string{"PreToolUse", "UserPromptSubmit"}) {
 		t.Errorf("hooks keys = %v, want the empty Stop removed", keys(t, raw))
 	}
 	if len(actions) != 4 || !slices.Contains(actions, "stop hook: removed /x/jalon hook stop --client claude-code") {
