@@ -38,12 +38,12 @@ With [Homebrew](https://brew.sh) on macOS:
 
 ```sh
 brew install a-lafon/tap/jalon
-jalon init    # adds the hooks and the status line to ~/.claude/settings.json
+jalon init    # adds the hooks and the status line to ~/.claude/settings.json, and the /jalon-* commands
 ```
 
 For Linux and the other ways, see [installing Jalon](docs/install.md).
 
-To get Jalon's commands in Claude Code, run `jalon init --skill`: `/jalon-resume` resumes from the latest handoff rather than `@` and its path, `/jalon-recap` sums up a whole thread of handoffs, `/jalon-handoff` writes a handoff when you choose, `/jalon-report` reads the context report for you, and `/jalon-help` lists them. See [handoffs](docs/handoffs.md#resuming).
+`jalon init` also gives Jalon's commands in Claude Code, unless you run it with `--skill=false`: `/jalon-resume` resumes from the latest handoff rather than `@` and its path, `/jalon-recap` sums up a whole thread of handoffs, `/jalon-handoff` writes a handoff when you choose, `/jalon-report` reads the context report for you, and `/jalon-help` lists them. See [handoffs](docs/handoffs.md#resuming).
 
 To draw the pole above the prompt instead of in the status line, with Claude Code 2.1.292 or later, run `jalon init --mod`: see [the pole above the prompt](docs/how-it-works.md#the-pole-above-the-prompt) for its limits.
 
@@ -70,7 +70,7 @@ It writes only:
 - **a note to keep the handoff up to date**, added by the prompt hook to the model's context on each prompt you type after the advice's handoff was written, until a compaction or the next advice;
 - **`.jalon/handoffs/`** in your project, with its `.gitignore`; the model writes the handoff files when you take that option;
 - **`~/.claude/settings.json`**, only when you run `jalon init`, with a `.jalon.bak` backup;
-- **`~/.claude/skills/jalon-*/`**, only when you run `jalon init --skill`: the five `/jalon-*` skills, which only you invoke, so their descriptions are not added to the starting context (checked with Claude Code 2.1.296 for one, 2.1.302 for five); a later `jalon init` updates them, and never replaces a skill it did not write;
+- **`~/.claude/skills/jalon-*/`**, when you run `jalon init` without `--skill=false`: the five `/jalon-*` skills, which only you invoke, so their descriptions are not added to the starting context (checked with Claude Code 2.1.296 for one, 2.1.302 for five); a later `jalon init` updates them, and never replaces a skill it did not write;
 - **`~/.jalon/`**: its session state, and its config when `jalon init` sets a threshold.
 
 The one exception is the mod, when you ask for it: `jalon init --mod` runs Claude Code's `claude plugin install`, which downloads the mod from GitHub and records it in `~/.claude/settings.json`, and `jalon init --uninstall` runs `claude plugin marketplace remove jalon`. The mod itself only runs `jalon statusline` and draws its answer.

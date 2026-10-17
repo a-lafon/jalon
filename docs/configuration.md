@@ -15,11 +15,11 @@ context:
 ## jalon init
 
 ```sh
-jalon init                      # add the hooks and the status line
+jalon init                      # add the hooks, the status line and the /jalon-* commands
 jalon init --dry-run            # show what would change, write nothing
-jalon init --statusline=false   # add the hooks alone
+jalon init --statusline=false   # add the hooks and the commands, no status line
 jalon init --mod                # add the hooks, and the mod in place of the status line
-jalon init --skill              # also add the /jalon-* commands: resume, recap, handoff, report, help
+jalon init --skill=false        # leave out the /jalon-* commands: resume, recap, handoff, report, help
 jalon init --uninstall          # remove what Jalon added, the mod included
 jalon init --advise-tokens 250000 --advise-step-tokens 100000   # also set the thresholds
 ```
@@ -28,7 +28,7 @@ jalon init --advise-tokens 250000 --advise-step-tokens 100000   # also set the t
 
 The status line is added only when you have none; see [status line](how-it-works.md#status-line) to add Jalon's to yours. `--mod` installs the [mod](how-it-works.md#the-pole-above-the-prompt) with Claude Code's own command, `claude plugin install jalon --marketplace a-lafon/jalon`, which downloads it from GitHub, and sets its `binary` option to the path the hook records. It removes Jalon's status line, since the mod draws the same pole. It needs Claude Code 2.1.292 or later, and refuses an older one before writing anything. Run it again after moving or reinstalling Jalon to update the path: a plain `jalon init` keeps an installed mod, adds no status line and runs no `claude` command, and says when the mod runs another binary than the hooks. `--statusline` adds the status line next to the mod, and both then draw the pole. `--uninstall` removes the mod with `claude plugin marketplace remove jalon`, which also deletes its option.
 
-`--skill` writes the five `/jalon-*` skills to `~/.claude/skills/jalon-<name>/SKILL.md`; see [handoffs](handoffs.md#resuming). `/jalon-report` runs the `jalon` the hooks run, by its full path. The files are Jalon's alone: once any of them is installed, a plain `jalon init` writes the whole set and overwrites edits, with no backup. To keep your own version of one, remove its marker line; Jalon then leaves it as it is, as any skill without that line. It also removes the single `/jalon` skill of 0.2.0, which they replace. `--uninstall` deletes the skills Jalon wrote and their folders.
+`jalon init` writes the five `/jalon-*` skills to `~/.claude/skills/jalon-<name>/SKILL.md`; see [handoffs](handoffs.md#resuming). `/jalon-report` runs the `jalon` the hooks run, by its full path. `--skill=false` does not add them, and still updates the set once Jalon wrote any of them. The files are Jalon's alone: `jalon init` overwrites edits, with no backup. To keep your own version of one, remove its marker line; Jalon then leaves it as it is, as any skill without that line. It also removes the single `/jalon` skill of 0.2.0, which they replace. `--uninstall` deletes the skills Jalon wrote and their folders.
 
 It then prints the advisor's thresholds in force and where they come from, the config file or the defaults:
 

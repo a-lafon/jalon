@@ -16,7 +16,7 @@ Jalon's commands in Claude Code:
 - `/jalon-help`: this list.
 
 In the terminal:
-- `jalon init`: install or update the hooks, the status line or mod, and these commands (`--skill`); `--uninstall` removes them.
+- `jalon init`: install or update the hooks, the status line or mod, and these commands; `--uninstall` removes them.
 - `jalon context-report`: what the advice did, from this machine's transcripts.
 - `jalon statusline`: the context size, for the status line.
 - `jalon version`: the installed version.
