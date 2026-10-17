@@ -11,6 +11,7 @@ import (
 	"unicode"
 
 	"github.com/a-lafon/jalon/internal/client"
+	"github.com/a-lafon/jalon/internal/client/hookjson"
 )
 
 // Adapter implements client.Adapter for Claude Code.
@@ -117,43 +118,14 @@ func (Adapter) Commands() client.Commands {
 }
 
 func (Adapter) Reply(userMessage, modelContext string) ([]byte, error) {
-	out := map[string]any{
-		"hookSpecificOutput": map[string]any{
-			"hookEventName":     "UserPromptSubmit",
-			"additionalContext": modelContext,
-		},
-	}
-	if userMessage != "" {
-		out["systemMessage"] = userMessage
-	}
-	return encode(out)
+	return hookjson.Reply(userMessage, modelContext)
 }
 
 // StopReply makes Claude Code go on with the turn: the reason reaches the model
 // as additional context, which the terminal labels "Stop hook feedback" (since
 // 2.1.163); a "decision": "block" would be labeled "Stop hook error".
 func (Adapter) StopReply(reason, userMessage string) ([]byte, error) {
-	out := map[string]any{
-		"hookSpecificOutput": map[string]any{
-			"hookEventName":     "Stop",
-			"additionalContext": reason,
-		},
-	}
-	if userMessage != "" {
-		out["systemMessage"] = userMessage
-	}
-	return encode(out)
-}
-
-// encode writes v as one line of JSON, leaving <, > and & as they are.
-func encode(v any) ([]byte, error) {
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(v); err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
+	return hookjson.StopContextReply(reason, userMessage)
 }
 
 // StatusSize reads context_window.total_input_tokens, which is null right after

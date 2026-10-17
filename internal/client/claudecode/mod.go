@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/a-lafon/jalon/internal/client"
+	"github.com/a-lafon/jalon/internal/client/hookjson"
 )
 
 var _ client.ModInstaller = Adapter{}
@@ -108,12 +109,12 @@ func (Adapter) ReadMod(settings []byte) client.ModState {
 // is missing or a value on the way is not an object.
 func lookup(raw []byte, keys ...string) (json.RawMessage, bool) {
 	for _, key := range keys {
-		o, err := parseObject(raw)
+		o, err := hookjson.ParseObject(raw)
 		if err != nil {
 			return nil, false
 		}
 		var ok bool
-		if raw, ok = o.get(key); !ok {
+		if raw, ok = o.Get(key); !ok {
 			return nil, false
 		}
 	}

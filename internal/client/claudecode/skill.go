@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/a-lafon/jalon/internal/client"
+	"github.com/a-lafon/jalon/internal/client/hookjson"
 )
 
 var _ client.SkillInstaller = Adapter{}
@@ -53,7 +54,7 @@ func (Adapter) Skills(exe string) ([]client.Skill, error) {
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, client.Skill{Path: path, Content: bytes.ReplaceAll(content, []byte("{jalon}"), []byte(quoteExe(exe)))})
+		out = append(out, client.Skill{Path: path, Content: bytes.ReplaceAll(content, []byte("{jalon}"), []byte(hookjson.QuoteExe(exe)))})
 	}
 	return out, nil
 }
