@@ -43,13 +43,25 @@ jalon init    # adds the hooks and the status line to ~/.claude/settings.json, a
 
 For Linux and the other ways, see [installing Jalon](docs/install.md).
 
-`jalon init` also gives Jalon's commands in Claude Code, unless you run it with `--skill=false`: `/jalon-resume` resumes from the latest handoff rather than `@` and its path, `/jalon-recap` sums up a whole thread of handoffs, `/jalon-handoff` writes a handoff when you choose, `/jalon-report` reads the context report for you, and `/jalon-help` lists them. See [handoffs](docs/handoffs.md#resuming).
-
 To draw the pole above the prompt instead of in the status line, with Claude Code 2.1.292 or later, run `jalon init --mod`: see [the pole above the prompt](docs/how-it-works.md#the-pole-above-the-prompt) for its limits.
 
 Then start a new Claude Code session, in the terminal or in VS Code, and work as usual. `jalon init --dry-run` shows what it would change; see [configuration](docs/configuration.md) for its flags.
 
 When the stop hook makes the model go on, the terminal labels what it asked the model `Stop hook error`: that is Claude Code's label for any hook that makes the model go on, not a failure of Jalon ([how it works](docs/how-it-works.md#what-you-see)).
+
+## Commands
+
+`jalon init` adds these commands to Claude Code, unless you run it with `--skill=false`. Only you invoke them: the model never runs one on its own.
+
+| Command | What it does |
+|---|---|
+| `/jalon-resume [path or words]` | Resumes from this project's latest handoff, or the one named, rather than `@` and its path. |
+| `/jalon-recap [path or words]` | Sums up a whole thread of handoffs, back to the first. |
+| `/jalon-handoff [what to stress]` | Writes a handoff now, before the advice comes. |
+| `/jalon-report [flags]` | Runs `jalon context-report` and explains it. |
+| `/jalon-help` | Lists these commands. |
+
+See [handoffs](docs/handoffs.md#resuming).
 
 ## Update
 
