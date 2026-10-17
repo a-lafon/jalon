@@ -32,6 +32,7 @@ func runContextReport(ctx context.Context, args []string, out io.Writer) error {
 	transcripts := flags.String("transcripts", defaultTranscripts(), "directory of the Claude Code transcripts")
 	split := flags.String("split", "", "comma-separated times (2026-10-12T09:00 or 2026-10-13, local time) that cut the window into periods")
 	stopHook := flags.Bool("stop-hook", true, "replay the stop hook's advice too (false: the prompt hook alone, as 0.1.0)")
+	summaryOnly := flags.Bool("summary", false, "print the summary only, not the sections it comes from")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -78,6 +79,15 @@ func runContextReport(ctx context.Context, args []string, out io.Writer) error {
 	printCoverage(out, reader.Coverage, *transcripts)
 	sim := ctxreport.Simulate(convs, params)
 	impact := ctxreport.Impacts(convs)
+	title := "Summary"
+	if len(cuts) > 0 {
+		title = "Summary of the whole window"
+	}
+	printSummary(out, title, impact.Between(since, now), sim.Between(since, now),
+		ctxreport.SubagentsBetween(convs, params.Advisor.AdviseTokens, since, now), wheres(convs), params.Advisor.AdviseTokens)
+	if *summaryOnly {
+		return nil
+	}
 
 	bounds := append(append([]time.Time{since}, cuts...), now)
 	for i := 0; i+1 < len(bounds); i++ {
@@ -145,26 +155,20 @@ func printImpact(out io.Writer, im ctxreport.Impact) {
 	fmt.Fprintln(out)
 
 	advised := 0
-	var notReRead, advisedNotReRead, inN, cacheRead int64
+	var inN, cacheRead int64
 	for _, r := range im.Resets {
 		if r.Advised {
 			advised++
-			advisedNotReRead += r.NotReRead
 		}
-		notReRead += r.NotReRead
 		inN += r.PromptTokens
 		cacheRead += r.CacheRead
 	}
 	fmt.Fprintf(out, "  resets %d (%d advised, %d unprompted); handoff resumes not linked %d\n",
 		len(im.Resets), advised, len(im.Resets)-advised, len(im.NotLinked))
-	share, advisedShare := 0.0, 0.0
-	if total := im.PromptRead + notReRead; total > 0 {
-		share = float64(notReRead) / float64(total)
-		advisedShare = float64(advisedNotReRead) / float64(total)
-	}
+	notReRead, advisedNotReRead, base := notReReadSums(im)
 	fmt.Fprintf(out, "  prompt tokens read %s; not re-read thanks to resets about %s prompt tokens (%s of what would have been read)\n",
-		tokensM(im.PromptRead), tokensM(notReRead), cli.PercentOf(share))
-	fmt.Fprintf(out, "    of which after advice about %s (%s of the same base)\n", tokensM(advisedNotReRead), cli.PercentOf(advisedShare))
+		tokensM(im.PromptRead), tokensM(notReRead), cli.PercentOf(shareOf(notReRead, base)))
+	fmt.Fprintf(out, "    of which after advice about %s (%s of the same base)\n", tokensM(advisedNotReRead), cli.PercentOf(shareOf(advisedNotReRead, base)))
 	fmt.Fprint(out, "    estimate: assumes the conversations would have gone on the same way; all cache types counted together")
 	if inN > 0 {
 		fmt.Fprintf(out, " (%s cache read)", cli.PercentOf(float64(cacheRead)/float64(inN)))
@@ -189,6 +193,19 @@ func printImpact(out io.Writer, im ctxreport.Impact) {
 			cli.TokensK(float64(r.Before)), after, r.Requests, tokensM(r.NotReRead), advice)
 	}
 	w.Flush()
+}
+
+// notReReadSums is the prompt tokens the resets kept from being read again, by
+// all of them and by the advised ones, and what would have been read without
+// any reset.
+func notReReadSums(im ctxreport.Impact) (all, advised, base int64) {
+	for _, r := range im.Resets {
+		all += r.NotReRead
+		if r.Advised {
+			advised += r.NotReRead
+		}
+	}
+	return all, advised, im.PromptRead + all
 }
 
 // printTranscriptPeriod prints the sections that come from the transcripts.
@@ -333,6 +350,30 @@ func printStartingSize(out io.Writer, floors []ctxreport.Floor) {
 	fmt.Fprintf(out, "  %s of the prompt tokens read by the conversations that started in this period was this starting size (%s of %s), which no reset can remove\n",
 		cli.PercentOf(shareOf(base, read)), tokensM(base), tokensM(read))
 
+	lines := projectLines(floors)
+	fmt.Fprintln(out, "  by project, largest p50 first (starting size share of the prompt tokens read):")
+	w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
+	for _, l := range lines[:min(len(lines), maxProjects)] {
+		fmt.Fprintf(w, "    %s\t%s\tp50 %s\tmax %s\t%s\n", l.name, cli.Plural(l.d.N, "conversation"),
+			cli.TokensK(l.d.P50), cli.TokensK(l.d.Max), cli.PercentOf(l.share))
+	}
+	w.Flush()
+	if more := len(lines) - maxProjects; more > 0 {
+		fmt.Fprintf(out, "    %s not shown\n", cli.Plural(more, "more project"))
+	}
+}
+
+// projectLine is a project's starting sizes, and the share of the prompt
+// tokens its conversations read that was their starting size.
+type projectLine struct {
+	name  string
+	d     ctxreport.Dist
+	share float64
+}
+
+// projectLines groups the starting sizes by project, named by the working
+// directory of its earliest conversation, the largest p50 first.
+func projectLines(floors []ctxreport.Floor) []projectLine {
 	type project struct {
 		name   string
 		floors []ctxreport.Floor
@@ -367,15 +408,10 @@ func printStartingSize(out io.Writer, floors []ctxreport.Floor) {
 		merged = append(merged, p)
 	}
 	projects = merged
-	type line struct {
-		name  string
-		d     ctxreport.Dist
-		share float64
-	}
-	lines := make([]line, len(projects))
+	lines := make([]projectLine, len(projects))
 	for i, p := range projects {
 		d, base, read := floorStats(p.floors)
-		lines[i] = line{p.name, d, shareOf(base, read)}
+		lines[i] = projectLine{p.name, d, shareOf(base, read)}
 	}
 	sort.Slice(lines, func(i, j int) bool {
 		if lines[i].d.P50 != lines[j].d.P50 {
@@ -383,16 +419,7 @@ func printStartingSize(out io.Writer, floors []ctxreport.Floor) {
 		}
 		return lines[i].name < lines[j].name
 	})
-	fmt.Fprintln(out, "  by project, largest p50 first (starting size share of the prompt tokens read):")
-	w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-	for _, l := range lines[:min(len(lines), maxProjects)] {
-		fmt.Fprintf(w, "    %s\t%s\tp50 %s\tmax %s\t%s\n", l.name, cli.Plural(l.d.N, "conversation"),
-			cli.TokensK(l.d.P50), cli.TokensK(l.d.Max), cli.PercentOf(l.share))
-	}
-	w.Flush()
-	if more := len(lines) - maxProjects; more > 0 {
-		fmt.Fprintf(out, "    %s not shown\n", cli.Plural(more, "more project"))
-	}
+	return lines
 }
 
 // floorStats is the distribution of the starting sizes, and the prompt tokens

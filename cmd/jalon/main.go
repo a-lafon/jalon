@@ -19,7 +19,7 @@ Usage:
       install the hooks and the status line, or the mod, and the /jalon-*
       commands; print or set the thresholds
   jalon context-report [-since 7d] [-transcripts dir] [-split t1,t2]
-                       [-stop-hook=false] [-config path]
+                       [-stop-hook=false] [-summary] [-config path]
       compare reset advice with the resets you did
   jalon handoffs [-thread] [path or words]
       print this project's latest handoff, or the one named, or with -thread

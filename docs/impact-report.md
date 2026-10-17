@@ -3,17 +3,32 @@
 `jalon context-report` checks the thresholds against your own history. It reads your Claude Code transcripts on your machine, offline, and prints a report; nothing is sent anywhere and nothing is written.
 
 ```sh
-jalon context-report [--since 7d] [--transcripts dir] [--split t1,t2] [--stop-hook=false] [--config path]
+jalon context-report [--since 7d] [--transcripts dir] [--split t1,t2] [--stop-hook=false] [--summary] [--config path]
 ```
 
 - `--since` takes a Go duration (`90m`, `24h`) or days (`7d`); the default is 7 days.
 - `--transcripts` is the folder to read, `~/.claude/projects` by default. It reads `<folder>/<project>/<session>.jsonl` and `<folder>/<session>.jsonl`, so one project's folder, such as `~/.claude/projects/-Users-me-work-app`, works too. The command fails, naming it, when it cannot be read, names the two layouts when it finds no file, and says so when files exist but none was modified in the window.
 - `--split` takes times (`2026-10-12T09:00` or `2026-10-13`, local time) that cut the window into periods, printed one after the other, so you can compare before and after a change of thresholds.
 - `--stop-hook=false` replays the prompt hook alone, as release 0.1.0 advised, so you can compare it with the current release on the same transcripts.
+- `--summary` prints the summary alone, without the sections it comes from. `/jalon-report` reads it.
+
+## Summary
+
+The report opens with a summary of the whole window, each line naming the section it comes from:
+
+- **Saved**: the prompt tokens the resets kept from being read again, an estimate (see Impact).
+- **Late**: the resets that came 10 user turns or more after the advice, at the current thresholds, and the prompt tokens their requests read past it, against those taken within one turn.
+- **Ignored**: the advices no reset followed.
+- **Subagents**: those that grew past the threshold, which no hook advises.
+- **Starting size**: the share of the prompt tokens that was the conversations' starting size, and the project that starts heaviest.
+- **Late resets to reopen**: the three that read the most past the advice, with their working directory and `claude --resume <session>`, to see what held them.
+- **To do**: the actions these lines call for, the most direct first: take the reset when the advice comes, when some came late; give subagents smaller tasks, when those past the threshold read 25% or more of the subagents' prompt tokens; trim what the heaviest project loads at start, when the starting size is 25% or more of the prompt tokens.
+
+The summary names your projects and session IDs: check it before you paste a report anywhere.
 
 ## Impact
 
-The report opens with an Impact section, read from the transcripts alone, for the conversations in which you typed a prompt. It lists the advice the hook gave and what followed each one: a compaction, a resume from a handoff, or nothing. For each reset it shows the context before and after, and estimates the prompt tokens the following requests did not re-read: (before − after) × the number of requests until the next reset.
+After the summary, the report has an Impact section, read from the transcripts alone, for the conversations in which you typed a prompt. It lists the advice the hook gave and what followed each one: a compaction, a resume from a handoff, or nothing. For each reset it shows the context before and after, and estimates the prompt tokens the following requests did not re-read: (before − after) × the number of requests until the next reset.
 
 It prints the total and, apart, the part from resets that followed advice, with its share of the same base (read plus not re-read). The estimate assumes the conversation would have gone on the same way, counts input, cache read and cache write together, and is never a cost or a quota.
 
