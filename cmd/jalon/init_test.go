@@ -776,7 +776,7 @@ func TestInitReportSkillNamesTheBinary(t *testing.T) {
 	withExecutable(t, testExe)
 	runInitOK(t, "-settings", filepath.Join(t.TempDir(), "settings.json"), "-skill")
 	b, _ := os.ReadFile(jalonSkills(t)[3].Path)
-	if !strings.Contains(string(b), "`"+testExe+" context-report $ARGUMENTS`") || strings.Contains(string(b), "{jalon}") {
+	if !strings.Contains(string(b), "`"+testExe+" context-report -summary $ARGUMENTS`") || strings.Contains(string(b), "{jalon}") {
 		t.Errorf("report skill = %s", b)
 	}
 }

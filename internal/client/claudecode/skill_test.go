@@ -42,7 +42,7 @@ func TestSkillsFrontmatter(t *testing.T) {
 			t.Errorf("%s: {jalon} left", name)
 		}
 	}
-	if !bytes.Contains(skills[3].Content, []byte("`'/opt/my jalon/jalon' context-report $ARGUMENTS`")) {
+	if !bytes.Contains(skills[3].Content, []byte("`'/opt/my jalon/jalon' context-report -summary $ARGUMENTS`")) {
 		t.Errorf("report skill does not run the binary:\n%s", skills[3].Content)
 	}
 	// A plain path stays as is; one the shell would expand is quoted, as in the hooks.
