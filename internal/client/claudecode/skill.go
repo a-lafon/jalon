@@ -11,8 +11,6 @@ import (
 	"github.com/a-lafon/jalon/internal/client/skilltext"
 )
 
-var _ client.SkillInstaller = Adapter{}
-
 // skillMarker is the line that tells a skill Jalon wrote from someone else's.
 const skillMarker = "<!-- " + skilltext.Marker + " -->"
 

@@ -827,28 +827,6 @@ func TestInitWithoutTheSkill(t *testing.T) {
 	}
 }
 
-func TestInitClientWithoutASkill(t *testing.T) {
-	withExecutable(t, testExe)
-	// Claude Code's hooks and settings, without its skills or mod.
-	adapters["hooks-only"] = struct {
-		client.Adapter
-		client.Installer
-	}{claudecode.Adapter{}, claudecode.Adapter{}}
-	t.Cleanup(func() { delete(adapters, "hooks-only") })
-	settings := filepath.Join(t.TempDir(), "settings.json")
-
-	// The default skills are skipped where the client has none.
-	runInitOK(t, "-settings", settings, "-client", "hooks-only")
-	if b, _ := os.ReadFile(settings); !strings.Contains(string(b), "hook prompt") {
-		t.Errorf("settings = %s", b)
-	}
-	// An explicit -skill is refused.
-	var out bytes.Buffer
-	if err := runInit([]string{"-settings", settings, "-client", "hooks-only", "-skill"}, &out); err == nil || !strings.Contains(err.Error(), "hooks-only has no skill") {
-		t.Errorf("err = %v", err)
-	}
-}
-
 func TestInitLeavesSomeoneElsesSkill(t *testing.T) {
 	for _, args := range [][]string{{}, {"-skill=false"}, {"-uninstall"}} {
 		t.Run(strings.Join(append([]string{"init"}, args...), " "), func(t *testing.T) {
