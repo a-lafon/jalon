@@ -455,4 +455,9 @@ func homeTilde(path, home string) string {
 }
 
 // tokensM formats a token count in millions: 10.1M.
-func tokensM(n int64) string { return fmt.Sprintf("%.1fM", float64(n)/1e6) }
+func tokensM(n int64) string {
+	if n >= 1e9 {
+		return fmt.Sprintf("%.1fB", float64(n)/1e9)
+	}
+	return fmt.Sprintf("%.1fM", float64(n)/1e6)
+}

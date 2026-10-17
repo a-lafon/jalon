@@ -1,6 +1,6 @@
 
 Summary
-  Saved: about 0.0M prompt tokens not re-read thanks to 0 resets, 0% of what would have been read (Impact; estimate: assumes the conversations would have gone on the same way)
+  Saved: about 0.0M prompt tokens not re-read thanks to the 0 resets that followed a Jalon advice; 0.0M with all 0 resets, 0% of what would have been read (Impact; estimate: assumes the conversations would have gone on the same way)
   Late: no reset came 10 turns or more after the advice (Simulated advice before each reset)
   Ignored: 0 of 0 advices were followed by no reset (Advices no reset followed)
   To do, most direct first:

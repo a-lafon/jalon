@@ -38,6 +38,9 @@ func TestReadSessionFixture(t *testing.T) {
 	if c.Human != 2 {
 		t.Errorf("human prompts = %d, want 2", c.Human)
 	}
+	if p := c.Turns[0].Prompt; p != "xxxxxxxxxxxx" {
+		t.Errorf("prompt = %q, want the typed text", p)
+	}
 	if c.Turns[0].Request != 0 || c.Turns[1].Request != 5 {
 		t.Errorf("first request of the turns = %d, %d, want 0 and 5", c.Turns[0].Request, c.Turns[1].Request)
 	}
@@ -517,5 +520,23 @@ func TestAskedHandoffIsNotAnAdvice(t *testing.T) {
 	c, err := NewReader().Read("/p/s1.jsonl", strings.NewReader(strings.Join(lines, "\n")))
 	if err != nil || len(c.Advices) != 0 {
 		t.Errorf("advices = %+v, %v, want none", c.Advices, err)
+	}
+}
+
+func TestStartOf(t *testing.T) {
+	for _, tc := range []struct {
+		in   string
+		n    int
+		want string
+	}{
+		{"fix\n  the  bug", 100, "fix the bug"},
+		{"<ide_opened_file>The user opened a.go</ide_opened_file>\nwhy?", 100, "why?"},
+		{"see <pasted_content id=\"1\">long\nlog</pasted_content id=\"1\"> here", 100, "see [pasted] here"},
+		{"<command-message>review</command-message>\n<command-name>/review</command-name>\n<command-args>the diff</command-args>", 100, "/review the diff"},
+		{"abcdef", 3, "abc…"},
+	} {
+		if got := startOf(tc.in, tc.n); got != tc.want {
+			t.Errorf("startOf(%q) = %q, want %q", tc.in, got, tc.want)
+		}
 	}
 }

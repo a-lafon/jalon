@@ -1,6 +1,6 @@
 
 Summary
-  Saved: about 40.0M prompt tokens not re-read thanks to 2 resets, 40% of what would have been read (Impact; estimate: assumes the conversations would have gone on the same way)
+  Saved: about 30.0M prompt tokens not re-read thanks to the 1 reset that followed a Jalon advice; 40.0M with all 2 resets, 40% of what would have been read (Impact; estimate: assumes the conversations would have gone on the same way)
   Late: 4 resets came 10 turns or more after the advice and read 16.6M prompt tokens past it, 2.0M each at p50, against 5K at p50 for the 2 taken within one turn (Simulated advice before each reset)
   Ignored: 2 of 9 advices were followed by no reset (Advices no reset followed)
   Subagents: 2 of 6 went past +200,000 tokens and read 38% of the subagents' prompt tokens; the hooks do not advise subagents (Subagents)
@@ -9,7 +9,27 @@ Summary
     2026-10-12 15:00  ~/beta   19 turns  +9.8M  claude --resume 22222222-bbbb
     2026-10-12 10:00  ~/alpha  12 turns  +4.2M  claude --resume 11111111-aaaa
     2026-10-13 10:00  ~/alpha  11 turns  +2.0M  claude --resume 11111111-aaaa
+  Typed after the advice, before the 2026-10-12 15:00 reset:
+    1. step 1
+    2. step 2
+    3. step 3
+    4. step 4
+    5. step 5
+    6. step 6
+    7. step 7
+    8. step 8
+    9. step 9
+    10. step 10
+    11. step 11
+    12. step 12
+    13. step 13
+    14. step 14
+    15. step 15
+    and 2 more
+  Typed after the advice, before the 2026-10-12 10:00 reset:
+    1. go
+    2. and the tests?
   To do, most direct first:
-    1. Take the reset when the advice comes: the late resets read 16.6M past it. Reopen one above, from its project, to see what held it.
+    1. Take the reset when the advice comes: the late resets read 16.6M past it; the prompts typed after the advice, above, show what held each one.
     2. Give subagents smaller tasks: the 2 that grew past +200,000 tokens read 38% of the subagents' prompt tokens, and Jalon cannot advise them.
     3. Trim what conversations load at start in ~/alpha (MCP servers, CLAUDE.md, skills): they start at 55K at p50, and every request reads it again.

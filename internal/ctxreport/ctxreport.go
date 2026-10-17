@@ -71,6 +71,9 @@ type SimReset struct {
 	// Beyond is the prompt tokens carried by the requests from the first advice to
 	// the reset, beyond the size at that advice.
 	Beyond int
+	// Prompts are the starts of the prompts a person typed after the first advice
+	// and before the reset, in order.
+	Prompts []string
 }
 
 // cut is where a conversation is reset: its compactions and its linked handoff
@@ -290,6 +293,11 @@ func resetResult(c transcript.Conversation, ct cut, advices []Advice, segReq int
 	first := advices[0]
 	r.Advised = true
 	r.Lead = max(ct.afterTurns-1-first.Turn, 0)
+	for _, t := range c.Turns[min(first.Turn+1, len(c.Turns)):max(first.Turn+1, min(ct.afterTurns, len(c.Turns)))] {
+		if t.Prompt != "" {
+			r.Prompts = append(r.Prompts, t.Prompt)
+		}
+	}
 	// From the advice's request: an advice at a turn's end leaves out its turn.
 	for _, req := range c.Requests[first.Request:max(first.Request, min(ct.afterRequests, len(c.Requests)))] {
 		if req.PromptTokens > first.PromptTokens {
