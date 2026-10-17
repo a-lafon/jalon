@@ -343,8 +343,9 @@ func hasSection(msg string) bool {
 // followed by a space, and returns the words after it.
 func handoffAsked(text string, adapter client.Adapter) (string, bool) {
 	text = strings.TrimSpace(text)
-	// Only a command reads the client's skill files, not every prompt.
-	if !strings.HasPrefix(text, "/") {
+	// Only a command, /name or $name, reads the client's skill files, not
+	// every prompt.
+	if !strings.HasPrefix(text, "/") && !strings.HasPrefix(text, "$") {
 		return "", false
 	}
 	cmd := adapter.Commands().Handoff
