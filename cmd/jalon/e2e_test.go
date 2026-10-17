@@ -165,3 +165,33 @@ func TestE2ETranscriptFieldsJalonReads(t *testing.T) {
 		t.Errorf("adapter read size %d, lifetime %v; want 121000, 5m", tail.Size, tail.CacheTTL)
 	}
 }
+
+func TestE2EHandoffCommand(t *testing.T) {
+	// Given a typed session at 121K, below the threshold, with Jalon's skills installed
+	c := newClaude(t, true, step{size: 121_000}, step{size: 122_000, section: true})
+	skills, err := claudecode.Adapter{}.Skills(jalonBin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, sk := range skills {
+		path := filepath.Join(c.home, ".claude", "skills", filepath.Base(filepath.Dir(sk.Path)), "SKILL.md")
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, sk.Content, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c.run("first")
+	// When the user types /jalon-handoff, then its request holds the skill's body
+	// and the hook's instruction, with the handoff's path in the project
+	reqs := c.run("/jalon-handoff the parser")
+	for _, want := range []string{"Jalon's prompt hook answers this command", "Jalon: the user typed /jalon-handoff", filepath.Join(c.project, ".jalon", "handoffs") + "/"} {
+		if holding(reqs, want) == 0 {
+			t.Errorf("no request of /jalon-handoff holds %q", want)
+		}
+	}
+	if st := c.state(); st["proposed"] == nil || st["last_advised"] != float64(121_000) {
+		t.Errorf("state = %v", st)
+	}
+}

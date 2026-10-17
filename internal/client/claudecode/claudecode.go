@@ -104,13 +104,14 @@ func (Adapter) ReadTail(p client.Prompt, promptID string, typed bool) client.Tai
 
 func (Adapter) ContextFloor(p client.Prompt) (int, bool) { return contextFloor(p.Ref) }
 
-func (a Adapter) Commands() client.Commands {
+func (Adapter) Commands() client.Commands {
 	cmds := client.Commands{Clear: "/clear", Compact: "/compact", Include: "@"}
-	// /jalon resume is offered only when the skill jalon init wrote is there.
-	if path, err := a.SkillPath(); err == nil {
-		if b, err := os.ReadFile(path); err == nil && a.OwnsSkill(b) {
-			cmds.Resume = "/jalon resume"
-		}
+	// A command is offered only when the skill jalon init wrote for it is there.
+	if ownedSkill("jalon-resume") {
+		cmds.Resume = "/jalon-resume"
+	}
+	if ownedSkill("jalon-handoff") {
+		cmds.Handoff = "/jalon-handoff"
 	}
 	return cmds
 }

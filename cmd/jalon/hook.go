@@ -10,8 +10,10 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/a-lafon/jalon/internal/advisor"
 	"github.com/a-lafon/jalon/internal/cli"
@@ -97,6 +99,18 @@ func resumeLine(cmds client.Commands) string {
 	return cmds.Include + "{dir}/{name}-<short-slug>.md (the full path) followed by " + resumeRequest + "."
 }
 
+// handoffOpening answers the client's handoff command: the advice's body,
+// with the handoff the user asked for in place of the option the size would
+// choose. {focus} is the user's words after the command, when there are any.
+const handoffOpening = `Jalon: the user typed {command} to ask for a handoff of this conversation now.{focus}
+Recommend option 2, the handoff, whatever the context size, and add one line with option 3's ready compact line, in case
+the user prefers compacting. End your reply with `
+
+// handoffAskedPrefix starts the message the user sees for the handoff command.
+// It is not advisor.MessagePrefix, so the context report does not count it as
+// an advice.
+const handoffAskedPrefix = "Jalon: handoff asked"
+
 // reminderPrefix starts the stop hook's reason when the reply lacks the section
 // asked at the start of the turn. The context report tells it from an advice
 // by its prefix, so a reminder never counts as a second advice.
@@ -169,6 +183,9 @@ func runPromptHook(ctx context.Context, args []string, stdin io.Reader, out io.W
 			}
 		}
 		tail := adapter.ReadTail(prompt, "", false)
+		if words, ok := handoffAsked(prompt.Text, adapter); ok {
+			return askHandoff(dir, adapter, prompt, tail, cfg, words, now)
+		}
 		st, ok := measure(dir, adapter, prompt, tail, cfg, now)
 		if !ok {
 			return writeBack(adapter, prompt, st)
@@ -322,6 +339,49 @@ func hasSection(msg string) bool {
 	return false
 }
 
+// handoffAsked tells whether text is the client's handoff command, alone or
+// followed by a space, and returns the words after it.
+func handoffAsked(text string, adapter client.Adapter) (string, bool) {
+	text = strings.TrimSpace(text)
+	// Only a command reads the client's skill files, not every prompt.
+	if !strings.HasPrefix(text, "/") {
+		return "", false
+	}
+	cmd := adapter.Commands().Handoff
+	rest, ok := strings.CutPrefix(text, cmd)
+	if cmd == "" || !ok || rest != "" && !unicode.IsSpace(rune(rest[0])) {
+		return "", false
+	}
+	return strings.TrimSpace(rest), true
+}
+
+// askHandoff answers the handoff command at any size: it records the size as
+// for any prompt, then names the handoff and records it as an advice does, so
+// its thread, the stop hook's reminder and the write-back note work as for an
+// advice, and the next advice comes one step later.
+func askHandoff(dir string, adapter client.Adapter, p client.Prompt, tail client.Tail, cfg config.Config, words string, now time.Time) []byte {
+	measure(dir, adapter, p, tail, cfg, now)
+	st, _ := advisor.Load(dir, p.Session)
+	body, ok := recordAdvice(dir, adapter, p, st, tail.CacheTTL, now)
+	if !ok {
+		return nil
+	}
+	focus := ""
+	if words != "" {
+		focus = " The user's words after the command say what to stress: " + strconv.Quote(words) + "."
+	}
+	message := handoffAskedPrefix + "."
+	if st.Size > 0 {
+		message = handoffAskedPrefix + " at " + cli.TokensK(float64(st.Size)) + " tokens."
+	}
+	opening := strings.NewReplacer("{command}", adapter.Commands().Handoff, "{focus}", focus).Replace(handoffOpening)
+	reply, err := adapter.Reply(message, opening+body)
+	if err != nil {
+		return nil
+	}
+	return reply
+}
+
 // writeBackNote reminds the model, on each prompt after the advice whose
 // handoff was written, to keep that handoff up to date: it is written in the
 // reply to the advised prompt, and what comes after would not be in it.
@@ -410,7 +470,10 @@ func recordAdvice(dir string, adapter client.Adapter, p client.Prompt, st adviso
 		_ = ensureHandoffFolder(projectRoot(p.Dir))
 	}
 	// Record the advice before it is shown, so the next prompt does not repeat it.
-	_ = advisor.MarkAdvised(dir, p.Session, st.Size, now, p.ID)
+	// A handoff asked before the first size is known records no advised size.
+	if st.Size > 0 {
+		_ = advisor.MarkAdvised(dir, p.Session, st.Size, now, p.ID)
+	}
 	_ = advisor.SetHandoff(dir, p.Session, parent, thread, name)
 	return fillBody(adapter, handoffDir, name, handoffHeader(parent, p.Session), ttl), true
 }

@@ -74,8 +74,11 @@ type Commands struct {
 	// absolute path, e.g. "@".
 	Include string
 	// Resume resumes from a handoff, followed by its absolute path, e.g.
-	// "/jalon resume"; "" when the client has no such command installed.
+	// "/jalon-resume"; "" when the client has no such command installed.
 	Resume string
+	// Handoff asks the prompt hook for a handoff now, e.g. "/jalon-handoff";
+	// "" when the client has no such command installed.
+	Handoff string
 }
 
 // Adapter is everything Jalon needs from one client.
@@ -155,16 +158,24 @@ type ModInstaller interface {
 	ReadMod(settings []byte) ModState
 }
 
-// SkillInstaller is implemented by adapters whose client takes a user skill,
-// which gives Jalon's commands to the user. jalon init reads and writes the
-// file; a SkillInstaller only gives its path and content.
+// SkillInstaller is implemented by adapters whose client takes user skills,
+// which give Jalon's commands to the user. jalon init reads and writes the
+// files; a SkillInstaller only gives their paths and content.
 type SkillInstaller interface {
-	// SkillPath is the skill file in the user's client folder.
-	SkillPath() (string, error)
-	// Skill is the content jalon init writes.
-	Skill() []byte
+	// Skills is Jalon's set of skills, each file in the user's client folder
+	// with the content jalon init writes; exe is the jalon the hooks run.
+	Skills(exe string) ([]Skill, error)
+	// RetiredSkills are the skill files of earlier versions, which jalon init
+	// removes when they hold the marker.
+	RetiredSkills() ([]string, error)
 	// OwnsSkill tells whether content holds the marker of a skill Jalon wrote.
 	OwnsSkill(content []byte) bool
+}
+
+// Skill is one skill file and its content.
+type Skill struct {
+	Path    string
+	Content []byte
 }
 
 // ModState is the mod as the client's settings record it.

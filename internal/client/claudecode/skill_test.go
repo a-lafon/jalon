@@ -9,26 +9,48 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
-func TestSkillFrontmatter(t *testing.T) {
-	parts := bytes.SplitN(Adapter{}.Skill(), []byte("---\n"), 3)
-	if len(parts) != 3 || len(parts[0]) != 0 {
-		t.Fatalf("no frontmatter:\n%s", Adapter{}.Skill())
+func TestSkillsFrontmatter(t *testing.T) {
+	t.Setenv("HOME", "/home/u")
+	skills, err := Adapter{}.Skills("/opt/my jalon/jalon")
+	if err != nil || len(skills) != len(skillNames) {
+		t.Fatalf("skills = %d, %v", len(skills), err)
 	}
-	var fm struct {
-		Name                   string `yaml:"name"`
-		Description            string `yaml:"description"`
-		ArgumentHint           string `yaml:"argument-hint"`
-		DisableModelInvocation bool   `yaml:"disable-model-invocation"`
+	for i, sk := range skills {
+		name := skillNames[i]
+		if want := filepath.Join("/home/u", ".claude", "skills", name, "SKILL.md"); sk.Path != want {
+			t.Errorf("path = %q, want %q", sk.Path, want)
+		}
+		parts := bytes.SplitN(sk.Content, []byte("---\n"), 3)
+		if len(parts) != 3 || len(parts[0]) != 0 {
+			t.Fatalf("%s: no frontmatter:\n%s", name, sk.Content)
+		}
+		var fm struct {
+			Name                   string `yaml:"name"`
+			Description            string `yaml:"description"`
+			DisableModelInvocation bool   `yaml:"disable-model-invocation"`
+		}
+		if err := yaml.Unmarshal(parts[1], &fm); err != nil {
+			t.Fatal(err)
+		}
+		if fm.Name != name || fm.Description == "" || strings.Contains(fm.Description, "\n") || !fm.DisableModelInvocation {
+			t.Errorf("%s: frontmatter = %+v", name, fm)
+		}
+		if !(Adapter{}).OwnsSkill(parts[2]) {
+			t.Errorf("%s: the body lacks the marker", name)
+		}
+		if bytes.Contains(sk.Content, []byte("{jalon}")) {
+			t.Errorf("%s: {jalon} left", name)
+		}
 	}
-	if err := yaml.Unmarshal(parts[1], &fm); err != nil {
-		t.Fatal(err)
+	if !bytes.Contains(skills[3].Content, []byte("`'/opt/my jalon/jalon' context-report $ARGUMENTS`")) {
+		t.Errorf("report skill does not run the binary:\n%s", skills[3].Content)
 	}
-	if fm.Name != "jalon" || fm.Description == "" || strings.Contains(fm.Description, "\n") ||
-		!strings.Contains(fm.ArgumentHint, "resume") || !fm.DisableModelInvocation {
-		t.Errorf("frontmatter = %+v", fm)
-	}
-	if !(Adapter{}).OwnsSkill(parts[2]) {
-		t.Error("the body lacks the marker")
+	// A plain path stays as is; one the shell would expand is quoted, as in the hooks.
+	for exe, want := range map[string]string{"/opt/homebrew/bin/jalon": "`/opt/homebrew/bin/jalon context-report", "/opt/$HOME/jalon": "`'/opt/$HOME/jalon' context-report"} {
+		got, _ := Adapter{}.Skills(exe)
+		if !bytes.Contains(got[3].Content, []byte(want)) {
+			t.Errorf("%s: report skill lacks %q", exe, want)
+		}
 	}
 }
 
@@ -38,9 +60,9 @@ func TestOwnsSkill(t *testing.T) {
 	}
 }
 
-func TestSkillPath(t *testing.T) {
+func TestRetiredSkills(t *testing.T) {
 	t.Setenv("HOME", "/home/u")
-	if path, err := (Adapter{}).SkillPath(); err != nil || path != filepath.Join("/home/u", ".claude", "skills", "jalon", "SKILL.md") {
-		t.Errorf("path = %q, %v", path, err)
+	if paths, err := (Adapter{}).RetiredSkills(); err != nil || len(paths) != 1 || paths[0] != filepath.Join("/home/u", ".claude", "skills", "jalon", "SKILL.md") {
+		t.Errorf("retired = %q, %v", paths, err)
 	}
 }
