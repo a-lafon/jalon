@@ -359,3 +359,33 @@ func TestE2ECodexExecIsNotAdvised(t *testing.T) {
 		t.Errorf("state = %v", st)
 	}
 }
+
+func TestE2ECodexHandoffCommand(t *testing.T) {
+	// Given the hooks and skills jalon init --client codex writes, and a skill
+	// of someone else's that the model may invoke on its own
+	c := newCodex(t, false, step{size: 30_000}, step{size: 31_000, section: true})
+	visible := filepath.Join(c.home, ".agents", "skills", "e2e-visible", "SKILL.md")
+	if err := os.MkdirAll(filepath.Dir(visible), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(visible, []byte("---\nname: e2e-visible\ndescription: A skill the model may pick.\n---\n\nSay hi.\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// Then a plain prompt's request lists that skill to the model, and none of Jalon's
+	first := c.run("first")
+	if holding(first, "e2e-visible") == 0 || holding(first, "jalon-") > 0 {
+		t.Errorf("first prompt: %d requests list e2e-visible, %d name a jalon- skill; want all and none", holding(first, "e2e-visible"), holding(first, "jalon-"))
+	}
+	// When the user types $jalon-handoff, then its request holds the skill's body,
+	// with the user's words left in the message, and the hook's instruction, with
+	// the handoff's path in the project
+	reqs := c.run("$jalon-handoff the parser")
+	for _, want := range []string{"Jalon's prompt hook answers this command", "$jalon-handoff the parser", "Jalon: the user typed $jalon-handoff to ask", `say what to stress: \"the parser\"`, filepath.Join(c.project, ".jalon", "handoffs") + "/"} {
+		if holding(reqs, want) == 0 {
+			t.Errorf("no request of $jalon-handoff holds %q", want)
+		}
+	}
+	if st := c.state(); st["proposed"] == nil {
+		t.Errorf("state = %v", st)
+	}
+}
