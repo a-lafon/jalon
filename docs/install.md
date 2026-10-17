@@ -1,6 +1,6 @@
 # Installing Jalon
 
-Every way ends with `jalon init`, which adds the hooks and the status line to `~/.claude/settings.json`, and the `/jalon-*` commands in `~/.claude/skills/jalon-*/`; `jalon init --dry-run` shows what it would change first. For Codex, run `jalon init --client codex`, which adds only the hooks, to `~/.codex/hooks.json`, then trust them in Codex's `/hooks` ([Codex](how-it-works.md#codex)).
+Every way ends with `jalon init`, which adds the hooks and the status line to `~/.claude/settings.json`, and the `/jalon-*` commands in `~/.claude/skills/jalon-*/`; `jalon init --dry-run` shows what it would change first. For Codex, run `jalon init --client codex`, which adds the hooks to `~/.codex/hooks.json` and the `$jalon-*` commands in `~/.agents/skills/jalon-*/`, then trust them in Codex's `/hooks` ([Codex](how-it-works.md#codex)).
 
 ## The install script
 
