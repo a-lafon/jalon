@@ -341,19 +341,13 @@ func gitRepo(t *testing.T) string {
 func TestHookResumesWithTheSkillWhenInstalled(t *testing.T) {
 	_, cfg := hookState(t, "s1", 212_000)
 	repo := gitRepo(t)
-	skill := filepath.Join(os.Getenv("HOME"), ".claude", "skills", "jalon", "SKILL.md")
-	if err := os.MkdirAll(filepath.Dir(skill), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(skill, claudecode.Adapter{}.Skill(), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	writeJalonSkills(t)
 	var out hookOutput
 	if err := json.Unmarshal([]byte(runPrompt(t, cfg, hookInput("s1", repo))), &out); err != nil {
 		t.Fatal(err)
 	}
 	ctxt := out.HookSpecificOutput.AdditionalContext
-	if !regexp.MustCompile(`then /jalon resume `+regexp.QuoteMeta(repo)+`/\.jalon/handoffs/2026-10-12/0900-[0-9a-z]{8}-<short-slug>\.md \(the full path\), with nothing after it\.`).MatchString(ctxt) ||
+	if !regexp.MustCompile(`then /jalon-resume `+regexp.QuoteMeta(repo)+`/\.jalon/handoffs/2026-10-12/0900-[0-9a-z]{8}-<short-slug>\.md \(the full path\), with nothing after it\.`).MatchString(ctxt) ||
 		strings.Contains(ctxt, "then @") || strings.Contains(ctxt, "{") {
 		t.Errorf("additionalContext = %q", ctxt)
 	}
@@ -843,7 +837,7 @@ func TestHookThreadsHandoffs(t *testing.T) {
 		useHome(t)
 		repo, cfg := gitRepo(t), configWith(t, thresholdsConfig)
 		path := writeHandoff(t, repo, parent)
-		ctxt := adviseAt(t, cfg, "s2", repo, "/jalon resume "+path, 212_000, hookNow)
+		ctxt := adviseAt(t, cfg, "s2", repo, "/jalon-resume "+path, 212_000, hookNow)
 		if _, id := thread(t, ctxt); id != "r4sefxw4" || !strings.Contains(ctxt, `"Follows: `+parent+`"`) {
 			t.Errorf("instruction = %q", ctxt)
 		}
@@ -1549,5 +1543,100 @@ func assertNoAdvice(t *testing.T, repo, prompt string) {
 	}
 	if _, err := os.Stat(filepath.Join(repo, ".jalon")); err == nil {
 		t.Error("the handoff folder was created")
+	}
+}
+
+// writeJalonSkills writes Jalon's skills in the test's home, as jalon init does.
+func writeJalonSkills(t *testing.T) {
+	t.Helper()
+	skills, err := claudecode.Adapter{}.Skills("/opt/homebrew/bin/jalon")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, sk := range skills {
+		if err := os.MkdirAll(filepath.Dir(sk.Path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(sk.Path, sk.Content, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestPromptHookAnswersTheHandoffCommand(t *testing.T) {
+	handoffInput := func(session, promptID, cwd, text string) string {
+		b, _ := json.Marshal(map[string]string{"session_id": session, "prompt_id": promptID, "cwd": cwd, "transcript_path": transcriptFile(session), "hook_event_name": "UserPromptSubmit", "prompt": text})
+		return string(b)
+	}
+	parse := func(t *testing.T, raw string) hookOutput {
+		t.Helper()
+		var out hookOutput
+		if err := json.Unmarshal([]byte(raw), &out); err != nil {
+			t.Fatalf("output %q: %v", raw, err)
+		}
+		return out
+	}
+	t.Run("not the command", func(t *testing.T) {
+		for _, text := range []string{"/jalon-handoffs", "please run /jalon-handoff", "/jalon-handoff-x now"} {
+			_, cfg := hookState(t, "s1", 120_000)
+			writeJalonSkills(t)
+			if got := runPrompt(t, cfg, handoffInput("s1", "p1", gitRepo(t), text)); got != "" {
+				t.Errorf("%q: output = %q, want nothing", text, got)
+			}
+		}
+	})
+	t.Run("skill not installed", func(t *testing.T) {
+		_, cfg := hookState(t, "s1", 120_000)
+		if got := runPrompt(t, cfg, handoffInput("s1", "p1", gitRepo(t), "/jalon-handoff")); got != "" {
+			t.Errorf("output = %q, want nothing", got)
+		}
+	})
+	t.Run("thread continued", func(t *testing.T) {
+		dir, cfg := hookState(t, "s1", 120_000)
+		writeJalonSkills(t)
+		repo := gitRepo(t)
+		parent := "2026-10-11/0904-a1b2c3d4-x.md"
+		path := writeHandoff(t, repo, parent)
+		// The session's first prompt resumes from the handoff.
+		runPrompt(t, cfg, handoffInput("s1", "p0", repo, "/jalon-resume "+path))
+		ctxt := parse(t, runPrompt(t, cfg, handoffInput("s1", "p1", repo, "/jalon-handoff"))).HookSpecificOutput.AdditionalContext
+		if !strings.Contains(ctxt, `Its first lines are "Follows: `+parent+`" and "Session: s1".`) ||
+			!strings.Contains(ctxt, "/2026-10-12/0900-a1b2c3d4-<short-slug>.md") || strings.Contains(ctxt, "say what to stress") {
+			t.Errorf("additionalContext = %q", ctxt)
+		}
+		if st, _ := advisor.Load(dir, "s1"); st.Thread != "a1b2c3d4" || st.Parent != parent || st.AdvisedPrompt != "p1" {
+			t.Errorf("state = %+v", st)
+		}
+	})
+	t.Run("size not known yet", func(t *testing.T) {
+		dir := useHome(t)
+		writeJalonSkills(t)
+		out := parse(t, runPrompt(t, configWith(t, thresholdsConfig), handoffInput("s1", "p1", gitRepo(t), "/jalon-handoff")))
+		if out.SystemMessage != "Jalon: handoff asked." || !strings.HasPrefix(out.HookSpecificOutput.AdditionalContext, "Jalon: the user typed /jalon-handoff ") {
+			t.Errorf("output = %+v", out)
+		}
+		if st, _ := advisor.Load(dir, "s1"); st.LastAdvised != 0 || st.AdvisedPrompt != "" || st.Proposed == "" {
+			t.Errorf("state = %+v, want a proposed handoff and no advised size", st)
+		}
+	})
+	t.Run("stop hook reminder and write-back", func(t *testing.T) {
+		_, cfg := hookState(t, "s1", 120_000)
+		writeJalonSkills(t)
+		repo := gitRepo(t)
+		if runPrompt(t, cfg, handoffInput("s1", "p1", repo, "/jalon-handoff")) == "" {
+			t.Fatal("no instruction")
+		}
+		appendTranscript(t, "s1", typedPrompt("p1"), assistantLine(121_000))
+		if out := parseStop(t, runStop(t, cfg, stopInput("s1", "p1", repo, "Done.", false))); !strings.HasPrefix(out.Reason, "Jalon: reminder, context at 120K tokens: ") {
+			t.Errorf("reason = %q", out.Reason)
+		}
+		st, _ := advisor.Load(filepath.Join(os.Getenv("HOME"), ".jalon", "sessions"), "s1")
+		written := writeHandoff(t, repo, st.Proposed+"-parser.md")
+		if ctxt := parse(t, runPrompt(t, cfg, handoffInput("s1", "p2", repo, "hi"))).HookSpecificOutput.AdditionalContext; !strings.HasPrefix(ctxt, "Jalon: the handoff "+written+" was written") {
+			t.Errorf("write-back = %q", ctxt)
+		}
+	})
+	if strings.HasPrefix(handoffAskedPrefix, advisor.MessagePrefix) {
+		t.Error("the handoff message starts like an advice: the report would count it")
 	}
 }

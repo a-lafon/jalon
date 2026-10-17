@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/a-lafon/jalon/internal/client"
 	"github.com/a-lafon/jalon/internal/client/claudecode"
 )
 
@@ -692,85 +693,132 @@ func TestInitKeptModDryRun(t *testing.T) {
 	}
 }
 
-// skillFile returns the skill file init uses, in the home withExecutable set,
-// after writing content to it unless content is empty.
-func skillFile(t *testing.T, content string) string {
+// jalonSkills are the skill files init writes, with their content for testExe,
+// in the home withExecutable set.
+func jalonSkills(t *testing.T) []client.Skill {
 	t.Helper()
-	path, err := claudecode.Adapter{}.SkillPath()
-	if err != nil {
-		t.Fatal(err)
+	skills, err := claudecode.Adapter{}.Skills(testExe)
+	if err != nil || len(skills) != 5 {
+		t.Fatalf("skills = %d, %v", len(skills), err)
 	}
-	if content != "" {
-		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	return path
+	return skills
 }
 
-const foreignSkill = "---\nname: jalon\ndescription: someone else's\n---\nMine.\n"
+// retiredSkill is the 0.2.0 skill file, in the home withExecutable set.
+func retiredSkill(t *testing.T) string {
+	t.Helper()
+	paths, err := claudecode.Adapter{}.RetiredSkills()
+	if err != nil || len(paths) != 1 {
+		t.Fatalf("retired = %v, %v", paths, err)
+	}
+	return paths[0]
+}
+
+func writeSkill(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// checkSkills fails unless every skill file holds its content for testExe.
+func checkSkills(t *testing.T, skills []client.Skill) {
+	t.Helper()
+	for _, sk := range skills {
+		if b, err := os.ReadFile(sk.Path); err != nil || !bytes.Equal(b, sk.Content) {
+			t.Errorf("%s = %s, %v", sk.Path, b, err)
+		}
+	}
+}
+
+const (
+	foreignSkill = "---\nname: jalon-help\ndescription: someone else's\n---\nMine.\n"
+	oldSkill     = "---\nname: jalon\n---\n<!-- Written by jalon init, which overwrites edits; jalon init --uninstall removes it. -->\nOld.\n"
+)
 
 func TestInitSkill(t *testing.T) {
 	withExecutable(t, testExe)
 	settings := filepath.Join(t.TempDir(), "settings.json")
-	path := skillFile(t, "")
+	skills := jalonSkills(t)
 	out := runInitOK(t, "-settings", settings, "-skill")
-	if !strings.Contains(out, "Wrote "+path+".") {
-		t.Errorf("output = %q", out)
+	for _, sk := range skills {
+		if !strings.Contains(out, "Wrote "+sk.Path+".") {
+			t.Errorf("output lacks %s:\n%s", sk.Path, out)
+		}
+		if info, _ := os.Stat(sk.Path); info.Mode().Perm() != 0o600 {
+			t.Errorf("%s mode = %v, want 0600", sk.Path, info.Mode().Perm())
+		}
+		if info, _ := os.Stat(filepath.Dir(sk.Path)); info.Mode().Perm() != 0o700 {
+			t.Errorf("%s folder mode = %v, want 0700", sk.Path, info.Mode().Perm())
+		}
 	}
-	b, err := os.ReadFile(path)
-	if err != nil || !bytes.Equal(b, claudecode.Adapter{}.Skill()) {
-		t.Fatalf("skill = %s, %v", b, err)
-	}
-	if info, _ := os.Stat(path); info.Mode().Perm() != 0o600 {
-		t.Errorf("mode = %v, want 0600", info.Mode().Perm())
-	}
-	if info, _ := os.Stat(filepath.Dir(path)); info.Mode().Perm() != 0o700 {
-		t.Errorf("folder mode = %v, want 0700", info.Mode().Perm())
-	}
+	checkSkills(t, skills)
 
-	// A rerun without -skill keeps it and writes nothing.
-	if out := runInitOK(t, "-settings", settings); !strings.Contains(out, path+": nothing to change.") {
-		t.Errorf("rerun output = %q", out)
-	}
-	if _, err := os.Stat(path + ".jalon.bak"); !errors.Is(err, os.ErrNotExist) {
-		t.Error("the rerun wrote a backup")
+	// A rerun without -skill keeps them and writes nothing.
+	out = runInitOK(t, "-settings", settings)
+	for _, sk := range skills {
+		if !strings.Contains(out, sk.Path+": nothing to change.") {
+			t.Errorf("rerun output lacks %s:\n%s", sk.Path, out)
+		}
+		if _, err := os.Stat(sk.Path + ".jalon.bak"); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("the rerun wrote a backup of %s", sk.Path)
+		}
 	}
 }
 
-func TestInitUpdatesTheSkill(t *testing.T) {
+func TestInitReportSkillNamesTheBinary(t *testing.T) {
 	withExecutable(t, testExe)
-	old := "---\nname: jalon\n---\n<!-- Written by jalon init, which overwrites edits; jalon init --uninstall removes it. -->\nOld.\n"
-	path := skillFile(t, old)
+	runInitOK(t, "-settings", filepath.Join(t.TempDir(), "settings.json"), "-skill")
+	b, _ := os.ReadFile(jalonSkills(t)[3].Path)
+	if !strings.Contains(string(b), "`"+testExe+" context-report $ARGUMENTS`") || strings.Contains(string(b), "{jalon}") {
+		t.Errorf("report skill = %s", b)
+	}
+}
+
+func TestInitUpgradesTheSingleSkill(t *testing.T) {
+	withExecutable(t, testExe)
+	old := retiredSkill(t)
+	writeSkill(t, old, oldSkill)
+	out := runInitOK(t, "-settings", filepath.Join(t.TempDir(), "settings.json"))
+	checkSkills(t, jalonSkills(t))
+	if want := "skill: removed " + old + " and its folder, replaced by the commands above"; !strings.Contains(out, want) {
+		t.Errorf("output lacks %q:\n%s", want, out)
+	}
+	if _, err := os.Stat(filepath.Dir(old)); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("old skill folder left: %v", err)
+	}
+}
+
+func TestInitUpdatesTheSkills(t *testing.T) {
+	withExecutable(t, testExe)
+	skills := jalonSkills(t)
+	writeSkill(t, skills[0].Path, oldSkill)
 	settings := filepath.Join(t.TempDir(), "settings.json")
 	out := runInitOK(t, "-settings", settings)
-	if !strings.Contains(out, "Wrote "+path+".\n") {
+	if !strings.Contains(out, "Wrote "+skills[0].Path+".\n") {
 		t.Errorf("output = %q", out)
 	}
-	if b, _ := os.ReadFile(path); !bytes.Equal(b, claudecode.Adapter{}.Skill()) {
-		t.Errorf("skill = %s", b)
-	}
-	// The skill is Jalon's alone: no backup, so uninstall leaves no folder.
-	if _, err := os.Stat(path + ".jalon.bak"); !errors.Is(err, os.ErrNotExist) {
+	checkSkills(t, skills)
+	// The skills are Jalon's alone: no backup, so uninstall leaves no folder.
+	if _, err := os.Stat(skills[0].Path + ".jalon.bak"); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("backup written: %v", err)
 	}
 	runInitOK(t, "-settings", settings, "-uninstall")
-	if _, err := os.Stat(filepath.Dir(path)); !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("skill folder left after uninstall: %v", err)
+	if entries, err := os.ReadDir(filepath.Dir(filepath.Dir(skills[0].Path))); err != nil || len(entries) != 0 {
+		t.Errorf("skills folder after uninstall = %v, %v", entries, err)
 	}
 }
 
 func TestInitWithoutTheSkill(t *testing.T) {
 	withExecutable(t, testExe)
-	path := skillFile(t, "")
 	if out := runInitOK(t, "-settings", filepath.Join(t.TempDir(), "settings.json")); strings.Contains(out, "skill") {
 		t.Errorf("output = %q", out)
 	}
-	if _, err := os.Stat(filepath.Dir(path)); !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("skill folder created: %v", err)
+	if _, err := os.Stat(filepath.Dir(filepath.Dir(jalonSkills(t)[0].Path))); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("skills folder created: %v", err)
 	}
 }
 
@@ -778,59 +826,86 @@ func TestInitLeavesSomeoneElsesSkill(t *testing.T) {
 	for _, args := range [][]string{{"-skill"}, {}, {"-uninstall"}} {
 		t.Run(strings.Join(append([]string{"init"}, args...), " "), func(t *testing.T) {
 			withExecutable(t, testExe)
-			path := skillFile(t, foreignSkill)
+			skills := jalonSkills(t)
+			help := skills[4].Path
+			writeSkill(t, help, foreignSkill)
+			// Someone else's skill named jalon is never taken for the 0.2.0 one.
+			writeSkill(t, retiredSkill(t), foreignSkill)
 			settings := filepath.Join(t.TempDir(), "settings.json")
 			out := runInitOK(t, append([]string{"-settings", settings}, args...)...)
-			want := "skill: " + path + " is in the way, a jalon skill not written by Jalon; left as is"
-			if len(args) == 1 && args[0] == "-uninstall" {
-				want = "skill: " + path + " not written by Jalon, left as is"
-			} else if b, _ := os.ReadFile(settings); !strings.Contains(string(b), "hook prompt") {
-				t.Errorf("settings = %s", b)
+			switch {
+			case len(args) == 0:
+				// No skill of Jalon's is there, so none is written.
+				if _, err := os.Stat(skills[0].Path); !errors.Is(err, os.ErrNotExist) {
+					t.Errorf("skill written: %v", err)
+				}
+			case args[0] == "-skill":
+				if want := "skill: " + help + " is in the way, a skill not written by Jalon; left as is"; !strings.Contains(out, want) {
+					t.Errorf("output lacks %q:\n%s", want, out)
+				}
+				checkSkills(t, skills[:4])
+			case args[0] == "-uninstall":
+				if want := "skill: " + help + " not written by Jalon, left as is"; !strings.Contains(out, want) {
+					t.Errorf("output lacks %q:\n%s", want, out)
+				}
 			}
-			if !strings.Contains(out, want) {
-				t.Errorf("output lacks %q:\n%s", want, out)
+			if len(args) == 0 || args[0] != "-uninstall" {
+				if b, _ := os.ReadFile(settings); !strings.Contains(string(b), "hook prompt") {
+					t.Errorf("settings = %s", b)
+				}
 			}
-			if b, _ := os.ReadFile(path); string(b) != foreignSkill {
-				t.Errorf("skill = %s", b)
-			}
-			if entries, _ := os.ReadDir(filepath.Dir(path)); len(entries) != 1 {
-				t.Errorf("skill folder = %v", entries)
+			for _, path := range []string{help, retiredSkill(t)} {
+				if b, _ := os.ReadFile(path); string(b) != foreignSkill {
+					t.Errorf("%s = %s", path, b)
+				}
 			}
 		})
 	}
 }
 
-func TestInitUninstallRemovesTheSkill(t *testing.T) {
+func TestInitUninstallRemovesTheSkills(t *testing.T) {
 	withExecutable(t, testExe)
 	settings := filepath.Join(t.TempDir(), "settings.json")
-	path := skillFile(t, "")
+	skills := jalonSkills(t)
 	runInitOK(t, "-settings", settings, "-skill")
+	old := retiredSkill(t)
+	writeSkill(t, old, oldSkill)
 
-	if out := runInitOK(t, "-settings", settings, "-uninstall", "-dry-run"); !strings.Contains(out, "skill: would remove "+path) {
-		t.Errorf("dry run output = %q", out)
+	out := runInitOK(t, "-settings", settings, "-uninstall", "-dry-run")
+	for _, path := range []string{skills[0].Path, skills[4].Path, old} {
+		if !strings.Contains(out, "skill: would remove "+path) {
+			t.Errorf("dry run output lacks %s:\n%s", path, out)
+		}
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("the dry run removed %s: %v", path, err)
+		}
 	}
-	if _, err := os.Stat(path); err != nil {
-		t.Fatalf("the dry run removed the skill: %v", err)
+	out = runInitOK(t, "-settings", settings, "-uninstall")
+	for _, path := range []string{skills[0].Path, skills[4].Path, old} {
+		if !strings.Contains(out, "skill: removed "+path+" and its folder") {
+			t.Errorf("output lacks %s:\n%s", path, out)
+		}
 	}
-	if out := runInitOK(t, "-settings", settings, "-uninstall"); !strings.Contains(out, "skill: removed "+path+" and its folder") {
-		t.Errorf("output = %q", out)
+	if entries, err := os.ReadDir(filepath.Dir(old)); err == nil {
+		t.Errorf("skills left: %v", entries)
 	}
-	if _, err := os.Stat(filepath.Dir(path)); !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("skill folder left: %v", err)
+	if entries, _ := os.ReadDir(filepath.Dir(filepath.Dir(old))); len(entries) != 0 {
+		t.Errorf("skills left: %v", entries)
 	}
-	if out := runInitOK(t, "-settings", settings, "-uninstall"); !strings.Contains(out, "skill: not installed") {
+	if out := runInitOK(t, "-settings", settings, "-uninstall"); !strings.Contains(out, "skills: not installed") {
 		t.Errorf("second uninstall output = %q", out)
 	}
 }
 
 func TestInitSkillDryRun(t *testing.T) {
 	withExecutable(t, testExe)
-	path := skillFile(t, "")
 	out := runInitOK(t, "-settings", filepath.Join(t.TempDir(), "settings.json"), "-skill", "-dry-run")
-	if !strings.Contains(out, "Dry run, "+path+" not written. It would become:\n"+string(claudecode.Adapter{}.Skill())) {
-		t.Errorf("output = %q", out)
-	}
-	if _, err := os.Stat(filepath.Dir(path)); !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("skill folder created: %v", err)
+	for _, sk := range jalonSkills(t) {
+		if !strings.Contains(out, "Dry run, "+sk.Path+" not written. It would become:\n"+string(sk.Content)) {
+			t.Errorf("output lacks %s:\n%s", sk.Path, out)
+		}
+		if _, err := os.Stat(filepath.Dir(sk.Path)); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("skill folder created: %v", err)
+		}
 	}
 }

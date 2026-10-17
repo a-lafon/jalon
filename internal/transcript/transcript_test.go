@@ -507,3 +507,15 @@ func assistant(ts, id string, input, cacheRead, cacheWrite, output int) string {
 func sidechain(line string) string {
 	return strings.Replace(line, `{"type"`, `{"isSidechain":true,"type"`, 1)
 }
+
+func TestAskedHandoffIsNotAnAdvice(t *testing.T) {
+	lines := []string{
+		humanText("2026-10-06T08:00:00Z", "/jalon-handoff"),
+		advice("h1", "2026-10-06T08:00:01Z", "Jalon: handoff asked at 120K tokens."),
+		assistant("2026-10-06T08:00:02Z", "m1", 1, 120000, 0, 5),
+	}
+	c, err := NewReader().Read("/p/s1.jsonl", strings.NewReader(strings.Join(lines, "\n")))
+	if err != nil || len(c.Advices) != 0 {
+		t.Errorf("advices = %+v, %v, want none", c.Advices, err)
+	}
+}

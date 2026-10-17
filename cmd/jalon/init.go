@@ -27,9 +27,9 @@ var (
 
 // runInit runs "jalon init": it installs Jalon's hooks and its status line into
 // the client's settings, or with -mod the client's mod in place of the status
-// line, and with -skill the client's skill, or removes them all with
+// line, and with -skill the client's skills, or removes them all with
 // -uninstall. A rerun without -mod or -statusline keeps a mod the settings
-// record, and without -skill updates a skill Jalon wrote. After an install it
+// record, and without -skill updates the skills when Jalon wrote any. After an install it
 // prints the advisor's thresholds, which -advise-tokens and -advise-step-tokens
 // set in the config file.
 func runInit(args []string, out io.Writer) error {
@@ -37,7 +37,7 @@ func runInit(args []string, out io.Writer) error {
 	clientName := flags.String("client", defaultClient, "coding agent to install Jalon into")
 	statusLine := flags.Bool("statusline", true, "install the status line (terminal only; never replaces another one)")
 	mod := flags.Bool("mod", false, "install the client's mod in place of the status line (Claude Code 2.1.292 or later; downloads it from GitHub)")
-	skill := flags.Bool("skill", false, "install the /jalon skill, to resume from a handoff (Claude Code: ~/.claude/skills/jalon/)")
+	skill := flags.Bool("skill", false, "install the /jalon-* commands: resume, recap, handoff, report, help (Claude Code: ~/.claude/skills/jalon-*/)")
 	uninstall := flags.Bool("uninstall", false, "remove what Jalon installed")
 	dryRun := flags.Bool("dry-run", false, "print what would change, write nothing")
 	settingsPath := flags.String("settings", "", "client settings file (default: the client's user settings)")
@@ -108,14 +108,9 @@ func runInit(args []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	var skillPath string
-	var skillCurrent []byte
-	var skillMode fs.FileMode
+	var skillFiles, retiredFiles []skillFile
 	if hasSkill {
-		if skillPath, err = skillInstaller.SkillPath(); err != nil {
-			return err
-		}
-		if skillCurrent, skillMode, err = readFile(skillPath); err != nil {
+		if skillFiles, retiredFiles, err = readSkills(skillInstaller); err != nil {
 			return err
 		}
 	}
@@ -178,11 +173,21 @@ func runInit(args []string, out io.Writer) error {
 	}
 	if *uninstall {
 		if hasSkill {
-			done, err := uninstallSkill(skillInstaller, skillPath, skillCurrent, *dryRun)
-			if err != nil {
-				return err
+			installed := false
+			for _, f := range append(skillFiles, retiredFiles...) {
+				if f.current == nil {
+					continue
+				}
+				installed = true
+				done, err := uninstallSkill(skillInstaller, f, *dryRun)
+				if err != nil {
+					return err
+				}
+				fmt.Fprintln(out, done)
 			}
-			fmt.Fprintln(out, done)
+			if !installed {
+				fmt.Fprintln(out, "skills: not installed")
+			}
 		}
 		if !hasMod {
 			return nil
@@ -216,7 +221,7 @@ func runInit(args []string, out io.Writer) error {
 	}
 
 	if hasSkill {
-		if err := installSkill(out, skillInstaller, skillPath, skillCurrent, skillMode, *skill, *dryRun); err != nil {
+		if err := installSkills(out, skillInstaller, skillFiles, retiredFiles, exe, *skill, *dryRun); err != nil {
 			return err
 		}
 	}
@@ -268,40 +273,102 @@ func replaceFile(out io.Writer, path string, current, next []byte, mode fs.FileM
 	return true, nil
 }
 
-// installSkill writes the skill when asked, or over a skill Jalon wrote, and
-// never over someone else's.
-func installSkill(out io.Writer, s client.SkillInstaller, path string, current []byte, mode fs.FileMode, asked, dryRun bool) error {
-	switch {
-	case current != nil && !s.OwnsSkill(current):
-		fmt.Fprintf(out, "skill: %s is in the way, a jalon skill not written by Jalon; left as is\n", path)
-	case current != nil || asked:
-		// The skill is all Jalon's, rebuilt from the binary: no backup, so uninstall
-		// leaves nothing behind.
-		_, err := replaceFile(out, path, current, s.Skill(), mode, false, dryRun, "It would become:\n"+string(s.Skill()))
+// skillFile is a skill file as jalon init found it: nil content when missing.
+type skillFile struct {
+	path    string
+	current []byte
+	mode    fs.FileMode
+}
+
+// readSkills reads the files of the skill set and of the retired skills.
+func readSkills(s client.SkillInstaller) (set, retired []skillFile, err error) {
+	// The paths do not depend on the executable, which uninstall does not need.
+	skills, err := s.Skills("")
+	if err != nil {
+		return nil, nil, err
+	}
+	paths, err := s.RetiredSkills()
+	if err != nil {
+		return nil, nil, err
+	}
+	read := func(path string) (skillFile, error) {
+		b, mode, err := readFile(path)
+		return skillFile{path, b, mode}, err
+	}
+	for _, sk := range skills {
+		f, err := read(sk.Path)
+		if err != nil {
+			return nil, nil, err
+		}
+		set = append(set, f)
+	}
+	for _, p := range paths {
+		f, err := read(p)
+		if err != nil {
+			return nil, nil, err
+		}
+		retired = append(retired, f)
+	}
+	return set, retired, nil
+}
+
+// installSkills writes the whole set when asked, or when Jalon wrote any skill
+// of it or a retired one, so an upgrade gets every new skill; it never writes
+// over someone else's file, and then removes the retired skills Jalon wrote.
+func installSkills(out io.Writer, s client.SkillInstaller, set, retired []skillFile, exe string, asked, dryRun bool) error {
+	install := asked
+	for _, f := range append(set, retired...) {
+		install = install || f.current != nil && s.OwnsSkill(f.current)
+	}
+	if !install {
+		return nil
+	}
+	skills, err := s.Skills(exe)
+	if err != nil {
 		return err
+	}
+	for i, f := range set {
+		if f.current != nil && !s.OwnsSkill(f.current) {
+			fmt.Fprintf(out, "skill: %s is in the way, a skill not written by Jalon; left as is\n", f.path)
+			continue
+		}
+		// The skills are all Jalon's, rebuilt from the binary: no backup, so
+		// uninstall leaves nothing behind.
+		next := skills[i].Content
+		if _, err := replaceFile(out, f.path, f.current, next, f.mode, false, dryRun, "It would become:\n"+string(next)); err != nil {
+			return err
+		}
+	}
+	for _, f := range retired {
+		if f.current == nil || !s.OwnsSkill(f.current) {
+			continue
+		}
+		done, err := uninstallSkill(s, f, dryRun)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintln(out, done+", replaced by the commands above")
 	}
 	return nil
 }
 
-// uninstallSkill deletes the skill Jalon wrote, then its folder when empty, and
-// says what it did.
-func uninstallSkill(s client.SkillInstaller, path string, current []byte, dryRun bool) (string, error) {
+// uninstallSkill deletes a skill file that exists when Jalon wrote it, then its
+// folder when empty, and says what it did.
+func uninstallSkill(s client.SkillInstaller, f skillFile, dryRun bool) (string, error) {
 	switch {
-	case current == nil:
-		return "skill: not installed", nil
-	case !s.OwnsSkill(current):
-		return "skill: " + path + " not written by Jalon, left as is", nil
+	case !s.OwnsSkill(f.current):
+		return "skill: " + f.path + " not written by Jalon, left as is", nil
 	case dryRun:
-		return "skill: would remove " + path, nil
+		return "skill: would remove " + f.path, nil
 	}
-	if err := os.Remove(path); err != nil {
+	if err := os.Remove(f.path); err != nil {
 		return "", err
 	}
 	// Removing a folder that is not empty fails and keeps it.
-	if os.Remove(filepath.Dir(path)) == nil {
-		return "skill: removed " + path + " and its folder", nil
+	if os.Remove(filepath.Dir(f.path)) == nil {
+		return "skill: removed " + f.path + " and its folder", nil
 	}
-	return "skill: removed " + path, nil
+	return "skill: removed " + f.path, nil
 }
 
 // installableExecutable is the absolute path the hook records: the jalon found

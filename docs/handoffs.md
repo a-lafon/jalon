@@ -14,7 +14,7 @@ The name is `<time>-<thread>-<slug>`: the time of the advice, the thread ID, and
 
 ## Resuming
 
-The advice gives you the lines to copy: `/clear`, then `@` and the handoff's full path, followed by a request to sum it up in three lines, keeping what was not checked marked as not checked, and wait for yours, without checking again the state it describes, and naming no task or next step. So the new session starts from the handoff, not from a task, and does not spend requests redoing what the handoff already says. To save a turn, add your own request after the `@` line. When the skill that `jalon init --skill` installs is there, the line is `/jalon resume` and the handoff's full path instead. In a session driven by a skill or command, the resume line re-invokes it, followed by the handoff's path as plain text and the same request. You can also resume in a new window.
+The advice gives you the lines to copy: `/clear`, then `@` and the handoff's full path, followed by a request to sum it up in three lines, keeping what was not checked marked as not checked, and wait for yours, without checking again the state it describes, and naming no task or next step. So the new session starts from the handoff, not from a task, and does not spend requests redoing what the handoff already says. To save a turn, add your own request after the `@` line. When the skills that `jalon init --skill` installs are there, the line is `/jalon-resume` and the handoff's full path instead. In a session driven by a skill or command, the resume line re-invokes it, followed by the handoff's path as plain text and the same request. You can also resume in a new window.
 
 Measured on four real handoffs, two runs each, before the line asked to keep what was not checked marked as such, with Claude Opus 5.5 in `claude -p` in a copy of the repository where only reading files was allowed:
 
@@ -25,7 +25,13 @@ Measured on four real handoffs, two runs each, before the line asked to keep wha
 
 In real sessions where the commands could run, the short line of 0.1.0 led to 101 and 104 tool calls before the user's second message. Eight runs per line, from my own handoffs with one model: a hint, not a proof.
 
-With the skill, `/jalon resume` finds the latest handoff of the project itself, or `/jalon resume <words>` the latest whose name or title holds them, or `/jalon resume <path>` that file. It names the handoff it picked and the two before it, sums up its goal, state and next step, then asks before going on, unless your words ask it to: `/jalon resume and go on`. It does not run commands to check the state the handoff describes unless your words ask for it. A push, a pull request, an API call or a message the handoff lists still waits for your OK.
+With the skills, `/jalon-resume` finds the latest handoff of the project itself, or `/jalon-resume <words>` the latest whose name or title holds them, or `/jalon-resume <path>` that file. It names the handoff it picked and the two before it, sums up its goal, state and next step, then asks before going on, unless your words ask it to: `/jalon-resume and go on`. It does not run commands to check the state the handoff describes unless your words ask for it. A push, a pull request, an API call or a message the handoff lists still waits for your OK.
+
+`/jalon-recap` picks a handoff the same way, then follows its `Follows:` lines back to the first handoff of the thread, and sums up the whole thread in at most 15 lines: the goal, the decisions in order with their reason, what is checked now and what is not, what is still open, and the next step. It reads every handoff of the thread when they total 100 KB or less, else the first and the last five, and names the ones it skipped; 100 KB is a bound above the longest thread measured (14 handoffs, 86 KB), not a measured limit. Like `/jalon-resume`, it runs no command.
+
+## A handoff when you choose
+
+`/jalon-handoff [what to stress]` asks for a handoff now, at any size, for example before a pause or at the end of a step. Jalon's prompt hook sees the command and gives the model the advice's own instruction, with the handoff's path and first lines, so it is written as an advised one would be, in the same thread; the model recommends the handoff and adds a `/compact` line in case you prefer compacting. It counts as an advice for what follows: the stop hook reminds once if the section is missing, the write-back note keeps the handoff up to date, and the next advice comes one step later. The context report does not count it as an advice. Without Jalon's hooks, the command says so and writes nothing.
 
 ## Threads
 

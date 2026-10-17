@@ -79,11 +79,16 @@ func TestGoldenHook(t *testing.T) {
 		"heavy-start":       {[]string{typedPrompt("p0"), assistantLine(212_000)}, "repo", 1},
 		"heavy-start-grown": {[]string{typedPrompt("p0"), assistantLine(230_000), assistantLine(385_000)}, "repo", 1},
 		"no-usage":          {[]string{`{"type":"user"}` + "\n"}, "repo", 1},
+		// Below the threshold, the user asks for a handoff.
+		"handoff-asked": {[]string{typedPrompt("p0"), assistantLine(50_000), assistantLine(120_000)}, "repo", 1},
 		// The agent cd'ed out of the project: the folder stays in the project.
 		"crossing-moved-cwd": {[]string{typedPrompt("p0"), assistantLine(50_000), assistantLine(212_000)}, "plain", 1},
 	}
 	// CLAUDE_PROJECT_DIR for the cases that set it; useHome empties it for the others.
 	projects := map[string]string{"crossing-moved-cwd": "repo/sub"}
+	// The prompt of the cases that type a command, with Jalon's skills installed;
+	// "hi" for the others.
+	commands := map[string]string{"handoff-asked": "/jalon-handoff the parser work"}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			dir := useHome(t)
@@ -98,9 +103,15 @@ func TestGoldenHook(t *testing.T) {
 			if p := projects[name]; p != "" {
 				t.Setenv("CLAUDE_PROJECT_DIR", map[string]string{"repo/sub": filepath.Join(repo, "sub")}[p])
 			}
+			text, ok := commands[name]
+			if ok {
+				writeJalonSkills(t)
+			} else {
+				text = "hi"
+			}
 			var out string
 			for range tt.prompt {
-				out = runPrompt(t, cfg, hookInput("s1", cwd))
+				out = runPrompt(t, cfg, hookInputText("s1", cwd, text))
 			}
 			norm := func(s string) string {
 				s = strings.ReplaceAll(s, repo, "<repo>")

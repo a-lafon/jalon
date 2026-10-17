@@ -16,8 +16,8 @@ Usage:
   jalon init [-statusline=false | -mod] [-skill] [-uninstall] [-dry-run]
              [-client name] [-settings path] [-advise-tokens n]
              [-advise-step-tokens n]
-      install the hooks and the status line, or the mod; print or set the
-      thresholds
+      install the hooks and the status line, or the mod, and with -skill the
+      /jalon-* commands; print or set the thresholds
   jalon context-report [-since 7d] [-transcripts dir] [-split t1,t2]
                        [-stop-hook=false] [-config path]
       compare reset advice with the resets you did
