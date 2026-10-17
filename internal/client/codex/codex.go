@@ -1,7 +1,7 @@
 // Package codex is the Codex CLI adapter: its hook input and output, the
 // rollout file that holds the context size, and its reset commands. Codex's
 // hooks take the input and the output of Claude Code's, so the replies and the
-// hooks file are Claude Code's.
+// hooks file are hookjson's, as Claude Code's are.
 package codex
 
 import (
@@ -11,7 +11,7 @@ import (
 	"unicode"
 
 	"github.com/a-lafon/jalon/internal/client"
-	"github.com/a-lafon/jalon/internal/client/claudecode"
+	"github.com/a-lafon/jalon/internal/client/hookjson"
 )
 
 // Adapter implements client.Adapter for Codex.
@@ -108,11 +108,11 @@ func (Adapter) Commands() client.Commands {
 }
 
 func (Adapter) Reply(userMessage, modelContext string) ([]byte, error) {
-	return claudecode.Adapter{}.Reply(userMessage, modelContext)
+	return hookjson.Reply(userMessage, modelContext)
 }
 
 func (Adapter) StopReply(reason, userMessage string) ([]byte, error) {
-	return claudecode.Adapter{}.StopReply(reason, userMessage)
+	return hookjson.StopReply(reason, userMessage)
 }
 
 // StatusSize reports no size: Codex's status line shows built-in items, it

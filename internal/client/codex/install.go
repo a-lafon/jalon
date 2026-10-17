@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/a-lafon/jalon/internal/client"
-	"github.com/a-lafon/jalon/internal/client/claudecode"
+	"github.com/a-lafon/jalon/internal/client/hookjson"
 )
 
 var _ client.Installer = Adapter{}
@@ -26,7 +26,7 @@ func (Adapter) SettingsPath() (string, error) {
 
 // Install adds Jalon's hooks; hooks.json has the shape of Claude Code's hooks.
 func (Adapter) Install(settings []byte, exe string, display client.Display) ([]byte, []string, error) {
-	out, actions, err := claudecode.InstallHooks(settings, exe, "codex")
+	out, actions, err := hookjson.InstallHooks(settings, exe, "codex")
 	if err != nil {
 		return nil, nil, err
 	}
@@ -40,5 +40,5 @@ func (Adapter) Install(settings []byte, exe string, display client.Display) ([]b
 }
 
 func (Adapter) Uninstall(settings []byte) ([]byte, []string, error) {
-	return claudecode.UninstallHooks(settings)
+	return hookjson.UninstallHooks(settings)
 }

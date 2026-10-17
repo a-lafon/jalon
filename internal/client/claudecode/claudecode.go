@@ -11,6 +11,7 @@ import (
 	"unicode"
 
 	"github.com/a-lafon/jalon/internal/client"
+	"github.com/a-lafon/jalon/internal/client/hookjson"
 )
 
 // Adapter implements client.Adapter for Claude Code.
@@ -117,37 +118,13 @@ func (Adapter) Commands() client.Commands {
 }
 
 func (Adapter) Reply(userMessage, modelContext string) ([]byte, error) {
-	out := map[string]any{
-		"hookSpecificOutput": map[string]any{
-			"hookEventName":     "UserPromptSubmit",
-			"additionalContext": modelContext,
-		},
-	}
-	if userMessage != "" {
-		out["systemMessage"] = userMessage
-	}
-	return encode(out)
+	return hookjson.Reply(userMessage, modelContext)
 }
 
 // StopReply makes Claude Code go on with the turn: the reason reaches the model
 // as a meta user message, and is not shown to the user.
 func (Adapter) StopReply(reason, userMessage string) ([]byte, error) {
-	out := map[string]any{"decision": "block", "reason": reason}
-	if userMessage != "" {
-		out["systemMessage"] = userMessage
-	}
-	return encode(out)
-}
-
-// encode writes v as one line of JSON, leaving <, > and & as they are.
-func encode(v any) ([]byte, error) {
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(v); err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
+	return hookjson.StopReply(reason, userMessage)
 }
 
 // StatusSize reads context_window.total_input_tokens, which is null right after
