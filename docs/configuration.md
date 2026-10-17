@@ -30,6 +30,8 @@ The status line is added only when you have none; see [status line](how-it-works
 
 `jalon init` writes the five `/jalon-*` skills to `~/.claude/skills/jalon-<name>/SKILL.md`; see [handoffs](handoffs.md#resuming). `/jalon-report` runs the `jalon` the hooks run, by its full path. `--skill=false` does not add them, and still updates the set once Jalon wrote any of them. The files are Jalon's alone: `jalon init` overwrites edits, with no backup. To keep your own version of one, remove its marker line; Jalon then leaves it as it is, as any skill without that line. It also removes the single `/jalon` skill of 0.2.0, which they replace. `--uninstall` deletes the skills Jalon wrote and their folders.
 
+`--client codex` installs into Codex instead: the prompt and stop hooks in `~/.codex/hooks.json`, or `$CODEX_HOME/hooks.json` when `CODEX_HOME` is set, edited as above, with no status line, mod or skill. Open `/hooks` in Codex afterwards to trust them; see [Codex](how-it-works.md#codex).
+
 It then prints the advisor's thresholds in force and where they come from, the config file or the defaults:
 
 ```
@@ -55,6 +57,8 @@ Add to `~/.claude/settings.json`:
   }
 }
 ```
+
+For Codex, put the same content in `~/.codex/hooks.json`, with `--client codex` in place of `--client claude-code`.
 
 ## Files
 
