@@ -50,6 +50,7 @@ func TestReadStop(t *testing.T) {
 }
 
 func TestCommandsAndNoStatusLine(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	if got := (Adapter{}).Commands(); got != (client.Commands{Clear: "/new", Compact: "/compact"}) {
 		t.Errorf("commands = %+v", got)
 	}

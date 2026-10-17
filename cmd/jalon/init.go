@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/a-lafon/jalon/internal/cli"
@@ -331,9 +332,21 @@ func installSkills(out io.Writer, s client.SkillInstaller, set, retired []skillF
 	if err != nil {
 		return err
 	}
-	for i, f := range set {
+	var foreign []string
+	for _, f := range set {
 		if f.current != nil && !s.OwnsSkill(f.current) {
+			foreign = append(foreign, f.path)
+		}
+	}
+	for i, f := range set {
+		if slices.Contains(foreign, f.path) {
 			fmt.Fprintf(out, "skill: %s is in the way, a skill not written by Jalon; left as is\n", f.path)
+			continue
+		}
+		// A skill of several files is written whole or not at all: a file of
+		// Jalon's would change someone else's skill.
+		if j := slices.IndexFunc(foreign, func(p string) bool { return sameSkill(p, f.path) }); j >= 0 {
+			fmt.Fprintf(out, "skill: %s not written, %s in its folder is not Jalon's\n", f.path, foreign[j])
 			continue
 		}
 		// The skills are all Jalon's, rebuilt from the binary: no backup, so
@@ -354,6 +367,14 @@ func installSkills(out io.Writer, s client.SkillInstaller, set, retired []skillF
 		fmt.Fprintln(out, done+", replaced by the commands above")
 	}
 	return nil
+}
+
+// sameSkill tells whether two skill files are of one skill: the folder of one
+// holds the other, at any depth.
+func sameSkill(a, b string) bool {
+	da, db := filepath.Dir(a), filepath.Dir(b)
+	sep := string(filepath.Separator)
+	return da == db || strings.HasPrefix(da, db+sep) || strings.HasPrefix(db, da+sep)
 }
 
 // uninstallSkill deletes a skill file that exists when Jalon wrote it, then its

@@ -102,9 +102,17 @@ func (Adapter) ReadTail(p client.Prompt, _ string, typed bool) client.Tail {
 func (Adapter) ContextFloor(p client.Prompt) (int, bool) { return contextFloor(p.Ref) }
 
 // Commands: @ in Codex only inserts a path, which the model then reads, so the
-// resume line gives the path alone.
+// resume line gives the path alone, or to $jalon-resume. A command is offered
+// only when the skill jalon init wrote for it is there.
 func (Adapter) Commands() client.Commands {
-	return client.Commands{Clear: "/new", Compact: "/compact"}
+	cmds := client.Commands{Clear: "/new", Compact: "/compact"}
+	if ownedSkill("jalon-resume") {
+		cmds.Resume = "$jalon-resume"
+	}
+	if ownedSkill("jalon-handoff") {
+		cmds.Handoff = "$jalon-handoff"
+	}
+	return cmds
 }
 
 func (Adapter) Reply(userMessage, modelContext string) ([]byte, error) {

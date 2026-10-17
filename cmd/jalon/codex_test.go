@@ -11,6 +11,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/a-lafon/jalon/internal/client/codex"
 )
 
 // codexRollout writes a Codex rollout whose session started from source, with
@@ -98,21 +100,113 @@ func TestCodexExecSessionIsNotAdvised(t *testing.T) {
 	}
 }
 
-func TestInitCodexInstallsOnlyTheHooks(t *testing.T) {
+// writeCodexSkills writes Jalon's Codex skills in the test's home, as jalon
+// init --client codex does.
+func writeCodexSkills(t *testing.T) {
+	t.Helper()
+	skills, err := codex.Adapter{}.Skills(testExe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, sk := range skills {
+		if err := os.MkdirAll(filepath.Dir(sk.Path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(sk.Path, sk.Content, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestCodexPromptHookAnswersTheHandoffCommand(t *testing.T) {
+	prompt := func(t *testing.T, text string) string {
+		t.Helper()
+		useHome(t)
+		writeCodexSkills(t)
+		cfg := configWith(t, thresholdsConfig)
+		return runCodexPrompt(t, cfg, codexInput(gitRepo(t), codexRollout(t, "cli", 50_000), map[string]any{"hook_event_name": "UserPromptSubmit", "prompt": text}))
+	}
+	// Below advise_tokens, $jalon-handoff alone gets the handoff instruction.
+	var out hookOutput
+	raw := prompt(t, "$jalon-handoff the parser")
+	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		t.Fatalf("output is not JSON: %v\n%s", err, raw)
+	}
+	if ctxt := out.HookSpecificOutput.AdditionalContext; out.SystemMessage != "Jalon: handoff asked at 50K tokens." ||
+		!strings.HasPrefix(ctxt, "Jalon: the user typed $jalon-handoff to ask for a handoff") || !strings.Contains(ctxt, `say what to stress: "the parser".`) {
+		t.Errorf("output = %s", raw)
+	}
+	for _, text := range []string{"$jalon-handoffs", "please run $jalon-handoff", "/jalon-handoff", "$jalon-handoff-x now"} {
+		if got := prompt(t, text); got != "" {
+			t.Errorf("%q: output = %q, want nothing", text, got)
+		}
+	}
+	// Without the skill, the command is not Jalon's.
+	useHome(t)
+	if got := runCodexPrompt(t, configWith(t, thresholdsConfig), codexInput(gitRepo(t), codexRollout(t, "cli", 50_000), map[string]any{"prompt": "$jalon-handoff"})); got != "" {
+		t.Errorf("no skill: output = %q", got)
+	}
+}
+
+func TestInitCodexInstallsTheHooksAndSkills(t *testing.T) {
 	withExecutable(t, testExe)
 	hooks := filepath.Join(t.TempDir(), "hooks.json")
+	skills, err := codex.Adapter{}.Skills(testExe)
+	if err != nil || len(skills) != 10 {
+		t.Fatalf("skills = %d, %v", len(skills), err)
+	}
 
-	// The default skills are Claude Code's: Codex gets the hooks alone.
 	runInitOK(t, "-settings", hooks, "-client", "codex")
 	if b, _ := os.ReadFile(hooks); !strings.Contains(string(b), "hook prompt --client codex") || !strings.Contains(string(b), "hook stop --client codex") {
 		t.Errorf("hooks = %s", b)
 	}
+	for _, sk := range skills {
+		if !strings.HasPrefix(sk.Path, filepath.Join(os.Getenv("HOME"), ".agents", "skills")+string(filepath.Separator)) {
+			t.Errorf("skill outside ~/.agents/skills: %s", sk.Path)
+		}
+		if b, err := os.ReadFile(sk.Path); err != nil || !bytes.Equal(b, sk.Content) {
+			t.Errorf("%s: %v\n%s", sk.Path, err, b)
+		}
+	}
 	if _, err := os.Stat(filepath.Join(os.Getenv("HOME"), ".claude")); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("something written under ~/.claude: %v", err)
 	}
-	// An explicit -skill is refused.
-	var out bytes.Buffer
-	if err := runInit([]string{"-settings", hooks, "-client", "codex", "-skill"}, &out); err == nil || !strings.Contains(err.Error(), "codex has no skill") {
-		t.Errorf("err = %v", err)
+	if out := runInitOK(t, "-settings", hooks, "-client", "codex"); strings.Contains(out, "Wrote") {
+		t.Errorf("a rerun wrote:\n%s", out)
+	}
+
+	// CODEX_HOME moves the hooks, not the skills: Codex reads ~/.agents/skills whatever it is.
+	codexHome := t.TempDir()
+	t.Setenv("CODEX_HOME", codexHome)
+	runInitOK(t, "-client", "codex")
+	if _, err := os.Stat(filepath.Join(codexHome, "skills")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("skills under CODEX_HOME: %v", err)
+	}
+}
+
+func TestInitCodexLeavesSomeoneElsesSkill(t *testing.T) {
+	withExecutable(t, testExe)
+	hooks := filepath.Join(t.TempDir(), "hooks.json")
+	theirs := filepath.Join(os.Getenv("HOME"), ".agents", "skills", "jalon-help", "SKILL.md")
+	writeSkill(t, theirs, foreignSkill)
+
+	// Their SKILL.md stays, and no openai.yaml of Jalon's goes into their skill.
+	out := runInitOK(t, "-settings", hooks, "-client", "codex")
+	if b, _ := os.ReadFile(theirs); string(b) != foreignSkill {
+		t.Errorf("their skill = %q", b)
+	}
+	yaml := filepath.Join(filepath.Dir(theirs), "agents", "openai.yaml")
+	if _, err := os.Stat(yaml); !errors.Is(err, os.ErrNotExist) || !strings.Contains(out, yaml+" not written, "+theirs+" in its folder is not Jalon's") {
+		t.Errorf("openai.yaml: %v\n%s", err, out)
+	}
+
+	// Uninstall removes Jalon's skills, their folders, and only them.
+	out = runInitOK(t, "-settings", hooks, "-client", "codex", "-uninstall")
+	if b, _ := os.ReadFile(theirs); string(b) != foreignSkill || !strings.Contains(out, theirs+" not written by Jalon, left as is") {
+		t.Errorf("their skill = %q\n%s", b, out)
+	}
+	entries, _ := os.ReadDir(filepath.Dir(filepath.Dir(theirs)))
+	if len(entries) != 1 || entries[0].Name() != "jalon-help" {
+		t.Errorf("left in the skills folder: %v", entries)
 	}
 }

@@ -28,6 +28,8 @@ func withExecutable(t *testing.T, exe string) {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", home)
+	// Codex reads its hooks there, else under ~/.codex.
+	t.Setenv("CODEX_HOME", "")
 	oldExe, oldLook, oldRun := executable, lookPath, runClient
 	executable = func() (string, error) { return exe, nil }
 	lookPath = func(string) (string, error) { return "", exec.ErrNotFound }
