@@ -49,11 +49,11 @@ Then start a new Claude Code session, in the terminal or in VS Code, and work as
 
 When the stop hook makes the model go on, the terminal labels what it asked the model `Stop hook error`: that is Claude Code's label for any hook that makes the model go on, not a failure of Jalon ([how it works](docs/how-it-works.md#what-you-see)).
 
-For [Codex](https://github.com/openai/codex) CLI, run `jalon init --client codex`, which adds only the hooks, to `~/.codex/hooks.json`: no status line, mod or `/jalon-*` commands. Then open `/hooks` in Codex and trust them: Codex runs a new or changed hook only once trusted. See [Codex](docs/how-it-works.md#codex) for what differs.
+For [Codex](https://github.com/openai/codex) CLI, run `jalon init --client codex`, which adds the hooks to `~/.codex/hooks.json` and the same commands to `~/.agents/skills/`, typed `$jalon-resume` and so on; Codex has no status line that runs a command, and no mod. Then open `/hooks` in Codex and trust them: Codex runs a new or changed hook only once trusted. See [Codex](docs/how-it-works.md#codex) for what differs.
 
 ## Commands
 
-`jalon init` adds these commands to Claude Code, unless you run it with `--skill=false`. Only you invoke them: the model never runs one on its own.
+`jalon init` adds these commands to Claude Code, unless you run it with `--skill=false`, and `jalon init --client codex` to Codex, typed with `$` in place of `/`. Only you invoke them: the model never runs one on its own.
 
 | Command | What it does |
 |---|---|
@@ -85,6 +85,7 @@ It writes only:
 - **`.jalon/handoffs/`** in your project, with its `.gitignore`; the model writes the handoff files when you take that option;
 - **`~/.claude/settings.json`**, only when you run `jalon init`, or **`~/.codex/hooks.json`** with `jalon init --client codex`, with a `.jalon.bak` backup;
 - **`~/.claude/skills/jalon-*/`**, when you run `jalon init` without `--skill=false`: the five `/jalon-*` skills, which only you invoke, so their descriptions are not added to the starting context (checked with Claude Code 2.1.296 for one, 2.1.302 for five); a later `jalon init` updates them, and never replaces a skill it did not write;
+- **`~/.agents/skills/jalon-*/`**, the same skills for Codex, with `jalon init --client codex`;
 - **`~/.jalon/`**: its session state, and its config when `jalon init` sets a threshold.
 
 The one exception is the mod, when you ask for it: `jalon init --mod` runs Claude Code's `claude plugin install`, which downloads the mod from GitHub and records it in `~/.claude/settings.json`, and `jalon init --uninstall` runs `claude plugin marketplace remove jalon`. The mod itself only runs `jalon statusline` and draws its answer.
