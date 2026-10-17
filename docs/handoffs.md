@@ -25,9 +25,11 @@ Measured on four real handoffs, two runs each, before the line asked to keep wha
 
 In real sessions where the commands could run, the short line of 0.1.0 led to 101 and 104 tool calls before the user's second message. Eight runs per line, from my own handoffs with one model: a hint, not a proof.
 
+Both commands below run `jalon handoffs`, which finds the project's handoff folder, picks the handoff and follows the thread in the binary, then prints them with their text: the model does not list, sort or count files, and runs no other command.
+
 With the skills, `/jalon-resume` finds the latest handoff of the project itself, or `/jalon-resume <words>` the latest whose name or title holds them, or `/jalon-resume <path>` that file. It names the handoff it picked and the two before it, sums up its goal, state and next step, then asks before going on, unless your words ask it to: `/jalon-resume and go on`. It does not run commands to check the state the handoff describes unless your words ask for it. A push, a pull request, an API call or a message the handoff lists still waits for your OK.
 
-`/jalon-recap` picks a handoff the same way, then follows its `Follows:` lines back to the first handoff of the thread, and sums up the whole thread in at most 15 lines: the goal, the decisions in order with their reason, what is checked now and what is not, what is still open, and the next step. It reads every handoff of the thread when they total 100 KB or less, else the first and the last five, and names the ones it skipped; 100 KB is a bound above the longest thread measured (14 handoffs, 86 KB), not a measured limit. Like `/jalon-resume`, it runs no command.
+`/jalon-recap` picks a handoff the same way, then follows its `Follows:` lines back to the first handoff of the thread, and sums up the whole thread in at most 15 lines: the goal, the decisions in order with their reason, what is checked now and what is not, what is still open, and the next step. `jalon handoffs -thread` prints every handoff of the thread when they total 100 KB or less, else the first and the last five, and names the ones it skipped; 100 KB is a bound above the longest thread measured (14 handoffs, 86 KB), not a measured limit. A `Follows:` line that names a missing file ends the thread there, and the command names that file.
 
 ## A handoff when you choose
 
