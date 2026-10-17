@@ -287,6 +287,13 @@ func runStopHook(ctx context.Context, args []string, stdin io.Reader, out io.Wri
 		if !ok || !typed() {
 			return nil
 		}
+		// A model may end its reply with a section of its own, as the advice of an
+		// earlier turn asked: that reply already proposes a reset, so the advice
+		// is recorded, and a block would only make it give a second section.
+		if hasSection(ev.LastMessage) {
+			_ = advisor.MarkAdvised(dir, ev.Session, st.Size, now, ev.ID)
+			return nil
+		}
 		body, ok := recordAdvice(dir, adapter, ev.Prompt, st, tail.CacheTTL, now)
 		if !ok {
 			return nil
@@ -302,6 +309,17 @@ func runStopHook(ctx context.Context, args []string, stdin io.Reader, out io.Wri
 	})
 	_, _ = out.Write(b)
 	return nil
+}
+
+// hasSection tells whether msg holds a Jalon section: a blockquote line that
+// starts with **Jalon**, not the name in bold within an answer.
+func hasSection(msg string) bool {
+	for line := range strings.Lines(msg) {
+		if strings.HasPrefix(strings.TrimSpace(line), "> **Jalon**") {
+			return true
+		}
+	}
+	return false
 }
 
 // writeBackNote reminds the model, on each prompt after the advice whose

@@ -1306,6 +1306,34 @@ func TestStopHookCrossedDuringTheTurn(t *testing.T) {
 	}
 }
 
+func TestStopHookCrossingWithASectionAlreadyGiven(t *testing.T) {
+	dir := useHome(t)
+	cfg := configWith(t, "context:\n  advise_tokens: 200000\n  advise_step_tokens: 150000\n")
+	repo := gitRepo(t)
+	// Two sessions whose turn p2 crosses the threshold during the turn.
+	for _, s := range []string{"s1", "s2"} {
+		appendTranscript(t, s, typedPrompt("p1"), assistantLine(67_000), assistantLine(150_000))
+		runPrompt(t, cfg, promptInput(s, "p2", repo))
+		appendTranscript(t, s, typedPrompt("p2"), assistantLine(296_000))
+	}
+	// The name in bold within an answer is not a section: the hook still blocks.
+	if out := parseStop(t, runStop(t, cfg, stopInput("s2", "p2", repo, "Done: **Jalon** now counts the floor.", false))); out.Decision != "block" {
+		t.Errorf("stop = %+v, want a block", out)
+	}
+	// The reply already ends with a section the model gave of its own.
+	if got := runStop(t, cfg, stopInput("s1", "p2", repo, "Done.\n\n> **Jalon** — Compact: keep the plan.", false)); got != "" {
+		t.Errorf("stop output = %q, want nothing", got)
+	}
+	// The advice is recorded, so the next prompt does not give it again.
+	if st, _ := advisor.Load(dir, "s1"); st.LastAdvised != 296_000 || st.AdvisedPrompt != "p2" {
+		t.Errorf("state = %+v, want last advised 296000 at prompt p2", st)
+	}
+	appendTranscript(t, "s1", typedPrompt("p3"), assistantLine(301_000))
+	if got := runPrompt(t, cfg, promptInput("s1", "p3", repo)); got != "" {
+		t.Errorf("next prompt output = %q, want nothing", got)
+	}
+}
+
 func TestStopHookFirstTurnCrossesTheThreshold(t *testing.T) {
 	dir := useHome(t)
 	cfg := configWith(t, thresholdsConfig)
