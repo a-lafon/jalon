@@ -420,6 +420,8 @@ func TestStartingSizeByProject(t *testing.T) {
 		floor("/t/-home-me-projects-alpha", "", 5, 74_000, 222_000, 222_000),
 		floor("/t/-home-me-perso-delta", "/home/me/perso/delta", 0, 43_000, 430_000, 86_000),
 		floor("/t/-home-me-perso-delta", "/home/me/perso/delta", 1, 47_000, 470_000, 94_000),
+		// A worktree's folder whose conversation ran in the repository: the delta's line.
+		floor("/t/-home-me-perso-delta--claude-worktrees-x", "/home/me/perso/delta", 3, 45_000, 450_000, 90_000),
 		// Starts at 70K, then reads 70K, 170K and 270K: 210K of 510K. No cwd.
 		floor("/t/-work-app", "", 2, 70_000, 510_000, 210_000),
 	}

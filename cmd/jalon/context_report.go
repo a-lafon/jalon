@@ -354,6 +354,19 @@ func printStartingSize(out io.Writer, floors []ctxreport.Floor) {
 			p.name, p.named = homeTilde(f.Cwd, home), f.Time
 		}
 	}
+	// Two transcript folders can show the same working directory, as a worktree's
+	// folder whose first conversation started in the repository: one line each.
+	byName := map[string]*project{}
+	merged := projects[:0]
+	for _, p := range projects {
+		if q := byName[p.name]; q != nil {
+			q.floors = append(q.floors, p.floors...)
+			continue
+		}
+		byName[p.name] = p
+		merged = append(merged, p)
+	}
+	projects = merged
 	type line struct {
 		name  string
 		d     ctxreport.Dist
