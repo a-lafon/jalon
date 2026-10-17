@@ -82,8 +82,30 @@ Prefer the status line unless you want the pole in Claude Desktop or on a row of
 
 `jalon init --uninstall` removes it with the rest; `jalon init --statusline` cannot be combined with `--mod`.
 
+## Codex
+
+Codex CLI's hooks take the same input and output as Claude Code's, so the advice, the stop hook and the handoff work the same way. In a real Codex 0.163.0 session, with `advise_tokens` lowered to 3K, the prompt hook's advice shows as:
+
+```
+› What is the first word of line 2 of notes.txt?
+↳ Hook · Jalon: context at 17K tokens, a reset proposal follows the answer.
+• maple
+  > Jalon — Compact is a good fit; there's little state to carry.
+  >
+  > /compact Keep that notes.txt line 2 begins with "maple"; drop the file dump.
+```
+
+When the stop hook makes the model go on, Codex shows `Blocked by hook`, the notice, then what it asked the model, before the section. What differs from Claude Code:
+
+- **The size** comes from the session's rollout file, which Codex passes to the hooks: the input tokens of the last request, cached ones included, from its last `token_count` event, or Codex's own estimate right after a compaction. Codex documents that file as not a stable interface, so a Codex release can change what Jalon reads.
+- **Sessions a program drives** are told apart by where the session started, as the rollout's first line records it: the interactive CLI and the IDE extension get the advice, `codex exec` and other programs do not.
+- **The commands** are `/new` and `/compact`, and the resume line gives the handoff's path as plain text, which the model reads.
+- **No status line, mod or skills**: Codex's status line shows only its own items, such as `context-used`, and runs no command, and `jalon init --client codex` installs no `/jalon-*` command. The impact report reads Claude Code transcripts only.
+- **Trust**: Codex runs a new or changed hook only once you trust it in `/hooks`, so after `jalon init --client codex`, and after a reinstall that changes the hook's path, open `/hooks` and trust Jalon's. A session started after the install asks for it on its own, with `Hooks need review`.
+- **Known limit**: Codex keeps the advice the prompt hook adds in the conversation, and in that session the model, GPT-6-Luna, ended every later reply with a Jalon section, though the advice asks for it once.
+
 ## Other clients
 
-Everything specific to Claude Code sits in `internal/client/claudecode`, behind the `client.Adapter` interface in `internal/client/client.go`: how to read the hook input, find the context size and the typed prompts, write the hook output, the reset commands, through the optional `client.Stopper` how to read a stop event and block the end of a turn, and through the optional `client.Installer` how to install the hooks. To add a client, implement that interface in `internal/client/<name>/`, register it in `cmd/jalon/clients.go`, and install `jalon hook prompt --client <name>` as that client's prompt hook, and `jalon hook stop --client <name>` as its stop hook when it has one.
+Everything specific to Claude Code sits in `internal/client/claudecode`, and to Codex in `internal/client/codex`, behind the `client.Adapter` interface in `internal/client/client.go`: how to read the hook input, find the context size and the typed prompts, write the hook output, the reset commands, through the optional `client.Stopper` how to read a stop event and block the end of a turn, and through the optional `client.Installer` how to install the hooks. To add a client, implement that interface in `internal/client/<name>/`, register it in `cmd/jalon/clients.go`, and install `jalon hook prompt --client <name>` as that client's prompt hook, and `jalon hook stop --client <name>` as its stop hook when it has one.
 
-The integration tests, in `cmd/jalon/e2e_test.go`, run the real client against a fake model API that reports chosen context sizes; another client can be tested the same way once it has an adapter, with a fake of the API it calls.
+The integration tests, in `cmd/jalon/e2e_test.go` for Claude Code and `cmd/jalon/e2e_codex_test.go` for Codex, run the real client against a fake model API that reports chosen context sizes; another client can be tested the same way once it has an adapter, with a fake of the API it calls.

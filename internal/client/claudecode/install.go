@@ -38,6 +38,47 @@ var hookKinds = []struct {
 	{"Stop", "stop hook", []string{"hook", "stop"}},
 }
 
+// InstallHooks returns settings, a JSON object with Claude Code's "hooks"
+// shape, with Jalon's prompt and stop hooks running exe --client clientName,
+// and what it did; other clients that read that shape, such as Codex, reuse it.
+// Content with nothing to change is returned unchanged.
+func InstallHooks(settings []byte, exe, clientName string) ([]byte, []string, error) {
+	root, err := parseObject(settings)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := checkExe(exe); err != nil {
+		return nil, nil, err
+	}
+	changed, actions, err := installHooks(&root, exe, clientName)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !changed {
+		return settings, actions, nil
+	}
+	out, err := format(root)
+	return out, actions, err
+}
+
+// UninstallHooks returns settings without Jalon's prompt and stop hooks, as
+// InstallHooks wrote them.
+func UninstallHooks(settings []byte) ([]byte, []string, error) {
+	root, err := parseObject(settings)
+	if err != nil {
+		return nil, nil, err
+	}
+	changed, actions, err := uninstallHooks(&root)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !changed {
+		return settings, actions, nil
+	}
+	out, err := format(root)
+	return out, actions, err
+}
+
 func (Adapter) Install(settings []byte, exe string, display client.Display) ([]byte, []string, error) {
 	root, err := parseObject(settings)
 	if err != nil {
@@ -46,33 +87,9 @@ func (Adapter) Install(settings []byte, exe string, display client.Display) ([]b
 	if err := checkExe(exe); err != nil {
 		return nil, nil, err
 	}
-	var actions []string
-	changed := false
-	for _, k := range hookKinds {
-		hookCmd := quoteExe(exe) + " " + strings.Join(k.words, " ") + " --client claude-code"
-		found, edited, err := editHooks(&root, k.event, k.words, func(cmd string) (string, bool) {
-			next := withExe(cmd, exe)
-			if next != cmd {
-				actions = append(actions, fmt.Sprintf("%s: updated %s -> %s", k.name, cmd, next))
-			}
-			return next, true
-		})
-		if err != nil {
-			return nil, nil, err
-		}
-		changed = changed || edited
-		switch {
-		case found == 0:
-			if err := appendHook(&root, k.event, hookCmd); err != nil {
-				return nil, nil, err
-			}
-			changed = true
-			actions = append(actions, k.name+": added "+hookCmd)
-		case found > 1:
-			actions = append(actions, fmt.Sprintf("%s: %d Jalon entries, each one runs: remove the extra ones by hand", k.name, found))
-		case !edited:
-			actions = append(actions, k.name+": already installed")
-		}
+	changed, actions, err := installHooks(&root, exe, "claude-code")
+	if err != nil {
+		return nil, nil, err
 	}
 
 	switch display {
@@ -117,25 +134,68 @@ func (Adapter) Install(settings []byte, exe string, display client.Display) ([]b
 	return out, actions, err
 }
 
-func (Adapter) Uninstall(settings []byte) ([]byte, []string, error) {
-	root, err := parseObject(settings)
-	if err != nil {
-		return nil, nil, err
-	}
+// installHooks adds or updates Jalon's hooks in root, running exe, which must
+// pass checkExe, with --client clientName.
+func installHooks(root *object, exe, clientName string) (bool, []string, error) {
 	var actions []string
 	changed := false
 	for _, k := range hookKinds {
-		found, edited, err := editHooks(&root, k.event, k.words, func(cmd string) (string, bool) {
+		hookCmd := quoteExe(exe) + " " + strings.Join(k.words, " ") + " --client " + clientName
+		found, edited, err := editHooks(root, k.event, k.words, func(cmd string) (string, bool) {
+			next := withExe(cmd, exe)
+			if next != cmd {
+				actions = append(actions, fmt.Sprintf("%s: updated %s -> %s", k.name, cmd, next))
+			}
+			return next, true
+		})
+		if err != nil {
+			return false, nil, err
+		}
+		changed = changed || edited
+		switch {
+		case found == 0:
+			if err := appendHook(root, k.event, hookCmd); err != nil {
+				return false, nil, err
+			}
+			changed = true
+			actions = append(actions, k.name+": added "+hookCmd)
+		case found > 1:
+			actions = append(actions, fmt.Sprintf("%s: %d Jalon entries, each one runs: remove the extra ones by hand", k.name, found))
+		case !edited:
+			actions = append(actions, k.name+": already installed")
+		}
+	}
+	return changed, actions, nil
+}
+
+// uninstallHooks removes every Jalon hook from root.
+func uninstallHooks(root *object) (bool, []string, error) {
+	var actions []string
+	changed := false
+	for _, k := range hookKinds {
+		found, edited, err := editHooks(root, k.event, k.words, func(cmd string) (string, bool) {
 			actions = append(actions, k.name+": removed "+cmd)
 			return "", false
 		})
 		if err != nil {
-			return nil, nil, err
+			return false, nil, err
 		}
 		changed = changed || edited
 		if found == 0 {
 			actions = append(actions, k.name+": not installed")
 		}
+	}
+	return changed, actions, nil
+}
+
+func (Adapter) Uninstall(settings []byte) ([]byte, []string, error) {
+	root, err := parseObject(settings)
+	if err != nil {
+		return nil, nil, err
+	}
+	changed, actions, err := uninstallHooks(&root)
+	if err != nil {
+		return nil, nil, err
 	}
 	if raw, ok := root.get("statusLine"); ok {
 		if sl, err := parseObject(raw); err == nil && isJalon(sl.str("command"), statusLineWords) {

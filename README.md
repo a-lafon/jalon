@@ -9,7 +9,7 @@
 
 Jalon tells you when a long conversation is worth resetting, and has the session's own model prepare the reset: a new session, a handoff file to resume from, or a `/compact` line that names what to keep. One binary, two hooks, no daemon, no network.
 
-> **Status: pre-alpha.** Tested with Claude Code on macOS; the test suite also runs on Linux in CI.
+> **Status: pre-alpha.** Tested with Claude Code on macOS; the test suite also runs on Linux in CI. Codex support is new: tried in one real Codex 0.163.0 session, and its integration tests run the real Codex CLI.
 
 A coding agent resends its whole conversation on every request, and most of what you pay for, or burn from your quota, is that context being read again: in five days of my own sessions, a request at 400K tokens cost three and a half times one at 100K. Resetting on time, without losing what matters, saves those tokens: see [cost and quality](docs/cost-and-quality.md). The client shows how full the context is, not when a reset is worth it; Jalon does.
 
@@ -49,6 +49,8 @@ Then start a new Claude Code session, in the terminal or in VS Code, and work as
 
 When the stop hook makes the model go on, the terminal labels what it asked the model `Stop hook error`: that is Claude Code's label for any hook that makes the model go on, not a failure of Jalon ([how it works](docs/how-it-works.md#what-you-see)).
 
+For [Codex](https://github.com/openai/codex) CLI, run `jalon init --client codex`, which adds only the hooks, to `~/.codex/hooks.json`: no status line, mod or `/jalon-*` commands. Then open `/hooks` in Codex and trust them: Codex runs a new or changed hook only once trusted. See [Codex](docs/how-it-works.md#codex) for what differs.
+
 ## Commands
 
 `jalon init` adds these commands to Claude Code, unless you run it with `--skill=false`. Only you invoke them: the model never runs one on its own.
@@ -81,7 +83,7 @@ It writes only:
 - **the advice**, added to the model's context by the prompt hook, on a prompt you typed, when the threshold is crossed; or by the stop hook at the end of a turn you started, which makes the model go on once to add the section: when the threshold was crossed during the turn, or when the reply left out the section asked for. Only a session you typed in gets it: a session a program started with `claude -p` does not, but a program that resumes a session you typed in is not detected by the prompt hook;
 - **a note to keep the handoff up to date**, added by the prompt hook to the model's context on each prompt you type after the advice's handoff was written, until a compaction or the next advice;
 - **`.jalon/handoffs/`** in your project, with its `.gitignore`; the model writes the handoff files when you take that option;
-- **`~/.claude/settings.json`**, only when you run `jalon init`, with a `.jalon.bak` backup;
+- **`~/.claude/settings.json`**, only when you run `jalon init`, or **`~/.codex/hooks.json`** with `jalon init --client codex`, with a `.jalon.bak` backup;
 - **`~/.claude/skills/jalon-*/`**, when you run `jalon init` without `--skill=false`: the five `/jalon-*` skills, which only you invoke, so their descriptions are not added to the starting context (checked with Claude Code 2.1.296 for one, 2.1.302 for five); a later `jalon init` updates them, and never replaces a skill it did not write;
 - **`~/.jalon/`**: its session state, and its config when `jalon init` sets a threshold.
 
@@ -89,7 +91,7 @@ The one exception is the mod, when you ask for it: `jalon init --mod` runs Claud
 
 ## Uninstall
 
-Remove the hooks first, then the binary: `jalon init --uninstall` removes the hooks, the status line, the mod and the skill it installed, and nothing else. Then `brew uninstall jalon`, or delete the binary. Delete `~/.jalon/` to remove its state and config. Handoff files are yours, in your projects under `.jalon/handoffs/`.
+Remove the hooks first, then the binary: `jalon init --uninstall` (and `jalon init --client codex --uninstall` for Codex) removes the hooks, the status line, the mod and the skill it installed, and nothing else. Then `brew uninstall jalon`, or delete the binary. Delete `~/.jalon/` to remove its state and config. Handoff files are yours, in your projects under `.jalon/handoffs/`.
 
 ## Documentation
 
@@ -112,7 +114,7 @@ go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
 
 CI runs the same checks on every push to `main` and on every pull request.
 
-`go test -tags e2e ./cmd/jalon` runs the integration tests: the real Claude Code, in `claude -p`, runs Jalon's hooks against a fake model API the test serves, so they need `claude` on the `PATH` but no key, no model and no network beyond localhost. They check what Jalon sends the model and the transcript fields it reads, not what a model does with the advice. CI runs them with a pinned Claude Code on every pull request, and with the latest one every night.
+`go test -tags e2e ./cmd/jalon` runs the integration tests: the real Claude Code, in `claude -p`, and the real Codex, in `codex exec`, run Jalon's hooks against a fake model API the test serves, so they need `claude` and `codex` on the `PATH` (a missing one skips its tests) but no key, no account and no model: the model API is the test's own. They check what Jalon sends the model and the transcript fields it reads, not what a model does with the advice. CI runs them with pinned clients on every pull request, and with the latest ones every night.
 
 To report a vulnerability, see [SECURITY.md](SECURITY.md).
 

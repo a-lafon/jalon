@@ -70,14 +70,15 @@ jobs:
       - name: Known vulnerabilities in the code paths used
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
 
-  # The real Claude Code runs Jalon's hooks against a fake model API served by
-  # the test: no key, no model. Pinned on pull requests, so a client release
-  # never turns one red; the latest version at night.
+  # The real Claude Code and Codex run Jalon's hooks against a fake model API
+  # served by the test: no key, no model. Pinned on pull requests, so a client
+  # release never turns one red; the latest versions at night.
   e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
       CLAUDE_CODE_VERSION: ${{ github.event_name == 'schedule' && 'latest' || '2.1.301' }}
+      CODEX_VERSION: ${{ github.event_name == 'schedule' && 'latest' || '0.163.0' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -91,6 +92,11 @@ jobs:
         run: |
           npm install --global "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
           claude --version
+
+      - name: Install Codex
+        run: |
+          npm install --global "@openai/codex@${CODEX_VERSION}"
+          codex --version
 
       - name: Integration test
         run: go test -tags e2e -count=1 ./cmd/jalon -run TestE2E
