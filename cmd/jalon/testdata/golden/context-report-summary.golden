@@ -5,6 +5,7 @@ Summary
   Ignored: 2 of 9 advices were followed by no reset (Advices no reset followed)
   Subagents: 2 of 6 went past +200,000 tokens and read 38% of the subagents' prompt tokens; the hooks do not advise subagents (Subagents)
   Starting size: 25% of the prompt tokens read, which no reset removes; largest p50 55K in ~/alpha (Starting size)
+  Cold returns: 3 typed prompts after a pause found the cache expired and sent 3% of the prompt tokens without reading them from it (Returns after a pause)
   Late resets to reopen, most read past the advice first:
     2026-10-12 15:00  ~/beta   19 turns  +9.8M  claude --resume 22222222-bbbb
     2026-10-12 10:00  ~/alpha  12 turns  +4.2M  claude --resume 11111111-aaaa

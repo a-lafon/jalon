@@ -48,12 +48,14 @@ func TestGoldenSummary(t *testing.T) {
 		"/t/b.jsonl": {"~/beta", "22222222-bbbb"},
 		"/t/c.jsonl": {"~/alpha", "33333333-cccc"},
 	}
+	// 3 cold returns did not read 600K of 20M prompt tokens from the cache.
+	rs := ctxreport.Returns{Cold: []ctxreport.ColdReturn{{NotRead: 289_000}, {NotRead: 211_000}, {NotRead: 100_000}}, PromptRead: 20_000_000}
 	var out bytes.Buffer
-	printSummary(&out, "Summary", im, sim, subs, at2, 200_000)
+	printSummary(&out, "Summary", im, sim, subs, rs, at2, 200_000)
 	checkGolden(t, "context-report-summary.golden", out.String())
 
 	out.Reset()
-	printSummary(&out, "Summary", ctxreport.Impact{}, ctxreport.Result{}, ctxreport.Subagents{}, nil, 200_000)
+	printSummary(&out, "Summary", ctxreport.Impact{}, ctxreport.Result{}, ctxreport.Subagents{}, ctxreport.Returns{}, nil, 200_000)
 	checkGolden(t, "context-report-summary-empty.golden", out.String())
 }
 
