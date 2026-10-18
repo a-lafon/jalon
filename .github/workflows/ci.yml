@@ -70,6 +70,26 @@ jobs:
       - name: Known vulnerabilities in the code paths used
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
 
+  # Claude Code updates an installed mod only when its version changes, so a
+  # pull request that changes plugin/ must also change that version.
+  plugin-version:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # HEAD is the merge commit; its first parent is the base branch.
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: The mod's version changes with the mod
+        run: |
+          if git diff --quiet HEAD^1 HEAD -- plugin/; then exit 0; fi
+          if git diff HEAD^1 HEAD -- plugin/.claude-plugin/plugin.json | grep -q '^+ *"version"'; then exit 0; fi
+          echo "plugin/ changed: bump \"version\" in plugin/.claude-plugin/plugin.json"
+          exit 1
+
   # The real Claude Code runs Jalon's hooks against a fake model API served by
   # the test: no key, no model. Pinned on pull requests, so a client release
   # never turns one red; the latest version at night.
