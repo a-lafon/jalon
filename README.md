@@ -5,17 +5,27 @@
   </picture>
 </p>
 
-**A context advisor for AI coding agents.**
+**A context advisor for Claude Code.**
 
 Jalon tells you when a long conversation is worth resetting, and has the session's own model prepare the reset: a new session, a handoff file to resume from, or a `/compact` line that names what to keep. One binary, two hooks, no daemon, no network.
 
-> **Status: pre-alpha.** Tested with Claude Code on macOS; the test suite also runs on Linux in CI.
+> **Status: early.** Tested with Claude Code on macOS; the test suite also runs on Linux in CI. Expect changes between 0.x releases.
 
-A coding agent resends its whole conversation on every request, and most of what you pay for, or burn from your quota, is that context being read again: in five days of my own sessions, a request at 400K tokens cost three and a half times one at 100K. Resetting on time, without losing what matters, saves those tokens: see [cost and quality](docs/cost-and-quality.md). The client shows how full the context is, not when a reset is worth it; Jalon does.
+In five days of my own sessions, a request at 400K tokens cost three and a half times one at 100K. A coding agent resends its whole conversation on every request, so most of what you pay for, or burn from your quota, is that context being read again. Resetting on time, without losing what matters, saves those tokens ([cost and quality](docs/cost-and-quality.md)). Claude Code shows how full the context is, not when a reset is worth it; Jalon does.
 
 ## What you see
 
-When a conversation's context has grown by 200K tokens above its starting size, and again after every further 150K, the model ends its answer with one recommendation, in your language, in a quoted block that starts with **Jalon**: a new session, a handoff to resume from, or a `/compact` line. You run the command; Jalon never does. In a terminal you also get a one-line notice, and the status line shows a pole whose three bands fill as the context grows, full when a reset is advised: `jalon ▰▰▱ 160K`. A Claude Code mod can draw the same pole above the prompt instead, in the terminal and in Claude Desktop ([the pole above the prompt](docs/how-it-works.md#the-pole-above-the-prompt)).
+When a conversation's context has grown by 200K tokens above its starting size, and again after every further 150K, the model ends its answer with one recommendation, in your language, in a quoted block that starts with **Jalon**: a new session, a handoff to resume from, or a `/compact` line. You run the command; Jalon never does.
+
+Two real Claude Code sessions on a toy project, with `advise_tokens` lowered to 10K. After reading a long log to find why an export crashed, little needs to carry over, so the model gives a `/compact` line that keeps the cause and the next step and drops the log:
+
+<img alt="The end of a Claude Code answer: a quoted block starting with Jalon recommends a compact and gives a /compact line keeping the crash's cause and the next step, dropping the raw log; the status line below shows the pole full, reset advised" src="assets/advice-compact.svg" width="720">
+
+While reconciling an export with an accountant's figures, a fix, a new finding and an open question must carry over, so the model writes a handoff and gives the lines to resume from it:
+
+<img alt="The end of a Claude Code answer: a quoted block starting with Jalon recommends a handoff, says what it carries over, and gives the /clear and resume lines to copy; the status line below shows the pole full, reset advised" src="assets/advice-handoff.svg" width="720">
+
+In a terminal you also get a one-line notice, and the status line shows a pole whose three bands fill as the context grows, full when a reset is advised: `jalon ▰▰▱ 160K`. A Claude Code mod can draw the same pole above the prompt instead, in the terminal and in Claude Desktop ([the pole above the prompt](docs/how-it-works.md#the-pole-above-the-prompt)).
 
 <img alt="The status line in a Claude Code session: the pole fills as the context grows, then says reset advised" src="assets/statusline.png" width="320">
 
@@ -65,7 +75,7 @@ See [handoffs](docs/handoffs.md#resuming).
 
 ## Update
 
-Jalon makes no network call, so it does not check for updates: run `brew outdated`, or watch the [releases](https://github.com/a-lafon/jalon/releases). Then `brew upgrade jalon`. The hooks keep working, but an upgrade from 0.1.0 needs `jalon init` once more, to add the stop hook; it keeps the mod if you use it. From 0.2.0, `jalon init` also replaces `/jalon resume` with the `/jalon-*` commands. Other install methods update as described in [installing Jalon](docs/install.md#update).
+Jalon makes no network call, so it does not check for updates: run `brew outdated`, or watch the [releases](https://github.com/a-lafon/jalon/releases). Then `brew upgrade jalon`. Some upgrades need `jalon init` once more: [installing Jalon](docs/install.md#update) says which, and how the other install methods update.
 
 ## What Jalon touches
 
@@ -78,7 +88,10 @@ Jalon advises; you act. It never:
 
 It writes only:
 
-- **the advice**, added to the model's context by the prompt hook, on a prompt you typed, when the threshold is crossed; or by the stop hook at the end of a turn you started, which makes the model go on once to add the section: when the threshold was crossed during the turn, or when the reply left out the section asked for. Only a session you typed in gets it: a session a program started with `claude -p` does not, but a program that resumes a session you typed in is not detected by the prompt hook;
+- **the advice**, added to the model's context:
+  - by the prompt hook, on a prompt you typed, when the threshold is crossed;
+  - by the stop hook, at the end of a turn you started, when the threshold was crossed during the turn or the reply left out the section asked for. It makes the model go on once to add the section;
+  - only in a session you typed in, not one a program started with `claude -p`. A program that resumes a session you typed in is not detected by the prompt hook;
 - **a note to keep the handoff up to date**, added by the prompt hook to the model's context on each prompt you type after the advice's handoff was written, until a compaction or the next advice;
 - **`.jalon/handoffs/`** in your project, with its `.gitignore`; the model writes the handoff files when you take that option;
 - **`~/.claude/settings.json`**, only when you run `jalon init`, with a `.jalon.bak` backup;

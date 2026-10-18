@@ -50,7 +50,7 @@ homebrew_casks:
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     directory: Casks
     homepage: https://github.com/a-lafon/jalon
-    description: "Context advisor for AI coding agents"
+    description: "Context advisor for Claude Code"
     binaries: [jalon]
     hooks:
       post:

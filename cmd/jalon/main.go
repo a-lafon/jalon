@@ -10,7 +10,7 @@ import (
 	"syscall"
 )
 
-const usage = `jalon - a context advisor for AI coding agents
+const usage = `jalon - a context advisor for Claude Code
 
 Usage:
   jalon init [-statusline=false | -mod] [-skill=false] [-uninstall] [-dry-run]

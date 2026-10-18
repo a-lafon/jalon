@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 891 377" width="891" height="377" role="img" aria-label="Jalon advice in a Claude Code session">
+<rect width="891" height="377" rx="12" fill="#1e1e1e"/>
+<g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14" xml:space="preserve">
+<text x="24.0" y="35" fill="#e6e6e6" textLength="8.4" lengthAdjust="spacingAndGlyphs">⏺</text>
+<text x="40.9" y="35" fill="#d0d0d0" opacity="0.5" textLength="8.4" lengthAdjust="spacingAndGlyphs">▎</text>
+<text x="57.7" y="35" fill="#d0d0d0" font-weight="bold" font-style="italic" textLength="42.1" lengthAdjust="spacingAndGlyphs">Jalon</text>
+<text x="108.3" y="35" fill="#d0d0d0" font-style="italic" textLength="750.3" lengthAdjust="spacingAndGlyphs">— I recommend a compact. You&#x27;re continuing the same task (the missing-rate fallback), and</text>
+<text x="40.9" y="56" fill="#d0d0d0" opacity="0.5" textLength="8.4" lengthAdjust="spacingAndGlyphs">▎</text>
+<text x="57.7" y="56" fill="#d0d0d0" font-style="italic" textLength="800.9" lengthAdjust="spacingAndGlyphs">only a little needs to carry over. Most of this context is the full log, which isn&#x27;t needed any</text>
+<text x="40.9" y="77" fill="#d0d0d0" opacity="0.5" textLength="8.4" lengthAdjust="spacingAndGlyphs">▎</text>
+<text x="57.7" y="77" fill="#d0d0d0" font-style="italic" textLength="42.1" lengthAdjust="spacingAndGlyphs">more.</text>
+<text x="40.9" y="98" fill="#d0d0d0" opacity="0.5" textLength="8.4" lengthAdjust="spacingAndGlyphs">▎</text>
+<text x="57.7" y="98" fill="#afd7ff" font-style="italic" textLength="691.3" lengthAdjust="spacingAndGlyphs">/compact Keep: the export failed with KeyError &#x27;2026-10-17&#x27; at shop/currency.py:11</text>
+<text x="40.9" y="119" fill="#d0d0d0" opacity="0.5" textLength="8.4" lengthAdjust="spacingAndGlyphs">▎</text>
+<text x="57.7" y="119" fill="#afd7ff" font-style="italic" textLength="792.4" lengthAdjust="spacingAndGlyphs">(RATES[date]); data/rates.json ends at 2026-10-16 (1.1688); 312 invoices F-10001..F-10312 went</text>
+<text x="40.9" y="140" fill="#d0d0d0" opacity="0.5" textLength="8.4" lengthAdjust="spacingAndGlyphs">▎</text>
+<text x="57.7" y="140" fill="#afd7ff" font-style="italic" textLength="792.4" lengthAdjust="spacingAndGlyphs">through before the crash; next step to confirm: make to_eur use the latest earlier rate when a</text>
+<text x="40.9" y="161" fill="#d0d0d0" opacity="0.5" textLength="8.4" lengthAdjust="spacingAndGlyphs">▎</text>
+<text x="57.7" y="161" fill="#afd7ff" font-style="italic" textLength="809.3" lengthAdjust="spacingAndGlyphs">date is missing, and still raise if there is none. Drop: the raw log lines and the tool outputs.</text>
+<text x="40.9" y="182" fill="#d0d0d0" opacity="0.5" textLength="8.4" lengthAdjust="spacingAndGlyphs">▎</text>
+<text x="57.7" y="182" fill="#d0d0d0" font-style="italic" textLength="809.3" lengthAdjust="spacingAndGlyphs">The prompt cache keeps this context for 5 minutes. After a longer pause, the next request writes</text>
+<text x="40.9" y="203" fill="#d0d0d0" opacity="0.5" textLength="8.4" lengthAdjust="spacingAndGlyphs">▎</text>
+<text x="57.7" y="203" fill="#d0d0d0" font-style="italic" textLength="421.5" lengthAdjust="spacingAndGlyphs">it all again, so it&#x27;s best to compact before that.</text>
+<text x="24.0" y="245" fill="#949494" textLength="8.4" lengthAdjust="spacingAndGlyphs">✻</text>
+<text x="40.9" y="245" fill="#949494" textLength="244.5" lengthAdjust="spacingAndGlyphs">Cooked for 18s · done 3:33 PM</text>
+<text x="24.0" y="287" fill="#808080" textLength="843.0" lengthAdjust="spacingAndGlyphs">────────────────────────────────────────────────────────────────────────────────────────────────────</text>
+<text x="24.0" y="308" fill="#d0d0d0" textLength="8.4" lengthAdjust="spacingAndGlyphs">❯</text>
+<text x="24.0" y="329" fill="#808080" textLength="843.0" lengthAdjust="spacingAndGlyphs">────────────────────────────────────────────────────────────────────────────────────────────────────</text>
+<text x="40.9" y="350" fill="#949494" textLength="42.1" lengthAdjust="spacingAndGlyphs">jalon</text>
+<text x="91.4" y="350" fill="#ff5f5f" textLength="25.3" lengthAdjust="spacingAndGlyphs">▰▰▰</text>
+<text x="125.2" y="350" fill="#949494" textLength="25.3" lengthAdjust="spacingAndGlyphs">49K</text>
+<text x="158.9" y="350" fill="#949494" textLength="8.4" lengthAdjust="spacingAndGlyphs">·</text>
+<text x="175.7" y="350" fill="#949494" textLength="42.1" lengthAdjust="spacingAndGlyphs">reset</text>
+<text x="226.3" y="350" fill="#949494" textLength="59.0" lengthAdjust="spacingAndGlyphs">advised</text>
+</g>
+</svg>
