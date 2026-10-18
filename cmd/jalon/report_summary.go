@@ -48,7 +48,7 @@ func wheres(convs []transcript.Conversation) map[string]where {
 // saved, what late and ignored advice cost, what no reset can remove, the late
 // resets to reopen, and what to do, the most direct first. Each line names the
 // section it comes from.
-func printSummary(out io.Writer, title string, im ctxreport.Impact, sim ctxreport.Result, subs ctxreport.Subagents, at map[string]where, adviseTokens int) {
+func printSummary(out io.Writer, title string, im ctxreport.Impact, sim ctxreport.Result, subs ctxreport.Subagents, rs ctxreport.Returns, at map[string]where, adviseTokens int) {
 	fmt.Fprintf(out, "\n%s\n", title)
 	notReRead, advised, base := notReReadSums(im)
 	nAdvised := 0
@@ -98,6 +98,10 @@ func printSummary(out io.Writer, title string, im ctxreport.Impact, sim ctxrepor
 	if len(projects) > 0 {
 		fmt.Fprintf(out, "  Starting size: %s of the prompt tokens read, which no reset removes; largest p50 %s in %s (Starting size)\n",
 			cli.PercentOf(startShare), cli.TokensK(projects[0].d.P50), projects[0].name)
+	}
+	if len(rs.Cold) > 0 {
+		fmt.Fprintf(out, "  Cold returns: %s after a pause found the cache expired and sent %s of the prompt tokens without reading them from it (Returns after a pause)\n",
+			cli.Plural(len(rs.Cold), "typed prompt"), smallPercent(shareOf(rs.NotRead(), rs.PromptRead)))
 	}
 
 	if len(late) > 0 {

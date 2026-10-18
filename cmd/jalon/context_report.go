@@ -79,12 +79,13 @@ func runContextReport(ctx context.Context, args []string, out io.Writer) error {
 	printCoverage(out, reader.Coverage, *transcripts)
 	sim := ctxreport.Simulate(convs, params)
 	impact := ctxreport.Impacts(convs)
+	returns := ctxreport.ColdReturns(convs, params.Advisor.AdviseTokens)
 	title := "Summary"
 	if len(cuts) > 0 {
 		title = "Summary of the whole window"
 	}
 	printSummary(out, title, impact.Between(since, now), sim.Between(since, now),
-		ctxreport.SubagentsBetween(convs, params.Advisor.AdviseTokens, since, now), wheres(convs), params.Advisor.AdviseTokens)
+		ctxreport.SubagentsBetween(convs, params.Advisor.AdviseTokens, since, now), returns.Between(since, now), wheres(convs), params.Advisor.AdviseTokens)
 	if *summaryOnly {
 		return nil
 	}
@@ -97,6 +98,7 @@ func runContextReport(ctx context.Context, args []string, out io.Writer) error {
 				from.Format("2006-01-02 15:04"), to.Format("2006-01-02 15:04"))
 		}
 		printImpact(out, impact.Between(from, to))
+		printReturns(out, returns.Between(from, to), params.Advisor.AdviseTokens)
 		printTranscriptPeriod(out, sim.Between(from, to), params)
 		printSubagents(out, ctxreport.SubagentsBetween(convs, params.Advisor.AdviseTokens, from, to), params.Advisor.AdviseTokens)
 	}
@@ -193,6 +195,51 @@ func printImpact(out io.Writer, im ctxreport.Impact) {
 			cli.TokensK(float64(r.Before)), after, r.Requests, tokensM(r.NotReRead), advice)
 	}
 	w.Flush()
+}
+
+// printReturns prints the prompts typed after a pause that found the cache
+// expired, and what they did not read from it.
+func printReturns(out io.Writer, rs ctxreport.Returns, adviseTokens int) {
+	fmt.Fprintln(out, "\nReturns after a pause (transcripts)")
+	if len(rs.Cold) == 0 {
+		fmt.Fprintln(out, "  none in this period")
+		return
+	}
+	notRead := rs.NotRead()
+	var pauses []float64
+	grown, handoff := 0, 0
+	for _, r := range rs.Cold {
+		pauses = append(pauses, r.Pause.Minutes())
+		if r.Grown {
+			grown++
+		}
+		if r.AfterHandoff {
+			handoff++
+		}
+	}
+	fmt.Fprintf(out, "  %s came more than %s after the previous request and read less than half of it from the cache: %s prompt tokens not read from it, %s of the %s read in this period; pause p50 %s\n",
+		cli.Plural(len(rs.Cold), "typed prompt"), minutes(ctxreport.MinPause.Minutes()), tokensM(notRead), smallPercent(shareOf(notRead, rs.PromptRead)), tokensM(rs.PromptRead),
+		minutes(ctxreport.Distribution(pauses).P50))
+	fmt.Fprintf(out, "  %d came with the context +%s tokens or more above its starting size; %d after a handoff was written in the conversation\n",
+		grown, cli.Thousands(int64(adviseTokens)), handoff)
+}
+
+// smallPercent is PercentOf with one decimal below 1%: cold returns are a small
+// share of the tokens read, but each costs forty reads, so 0% would hide them.
+func smallPercent(v float64) string {
+	if v < 0.01 {
+		return fmt.Sprintf("%.1f%%", v*100)
+	}
+	return cli.PercentOf(v)
+}
+
+// minutes formats a pause in minutes: 42m, 2h05m.
+func minutes(m float64) string {
+	n := int(m)
+	if n < 60 {
+		return fmt.Sprintf("%dm", n)
+	}
+	return fmt.Sprintf("%dh%02dm", n/60, n%60)
 }
 
 // notReReadSums is the prompt tokens the resets kept from being read again, by

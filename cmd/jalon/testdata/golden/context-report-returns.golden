@@ -1,0 +1,4 @@
+
+Returns after a pause (transcripts)
+  3 typed prompts came more than 5m after the previous request and read less than half of it from the cache: 0.6M prompt tokens not read from it, 3% of the 20.0M read in this period; pause p50 40m
+  2 came with the context +200,000 tokens or more above its starting size; 1 after a handoff was written in the conversation

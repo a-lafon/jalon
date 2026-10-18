@@ -404,6 +404,78 @@ func TestContextReportImpactFromTranscripts(t *testing.T) {
 	}
 }
 
+func TestGoldenReturns(t *testing.T) {
+	at := func(h, m int) time.Time { return time.Date(2026, 10, 9, h, m, 0, 0, time.Local) }
+	rs := ctxreport.Returns{
+		Cold: []ctxreport.ColdReturn{
+			{Time: at(9, 40), Pause: 40 * time.Minute, NotRead: 289_000, Grown: true, AfterHandoff: true},
+			{Time: at(14, 0), Pause: 2*time.Hour + 5*time.Minute, NotRead: 211_000, Grown: true},
+			{Time: at(16, 0), Pause: 12 * time.Minute, NotRead: 100_000},
+		},
+		PromptRead: 20_000_000,
+	}
+	var out bytes.Buffer
+	printReturns(&out, rs, 200_000)
+	checkGolden(t, "context-report-returns.golden", out.String())
+
+	out.Reset()
+	printReturns(&out, ctxreport.Returns{}, 200_000)
+	checkGolden(t, "context-report-returns-empty.golden", out.String())
+}
+
+// tUsage is an assistant request that read read prompt tokens from the cache
+// and wrote write to it.
+func tUsage(at time.Time, id string, read, write int) string {
+	return fmt.Sprintf(`{"type":"assistant","uuid":"a%d","timestamp":%q,"message":{"id":%q,"content":[{"type":"text","text":"x"}],`+
+		`"usage":{"input_tokens":5,"cache_read_input_tokens":%d,"cache_creation_input_tokens":%d}}}`, at.UnixNano(), ts(at), id, read, write)
+}
+
+func TestContextReportColdReturns(t *testing.T) {
+	now := time.Now()
+	at := func(m int) time.Time { return now.Add(-time.Duration(120-m) * time.Minute) }
+	dir := t.TempDir()
+	// A prompt typed 40 minutes after a 300K request reads 12K of 301K from the cache.
+	writeTranscript(t, dir,
+		tUser(at(0)), tUsage(at(1), "m1", 0, 49_995),
+		tUser(at(2)), tUsage(at(3), "m2", 49_995, 250_000),
+		tUser(at(43)), tUsage(at(43), "m3", 12_000, 288_995),
+	)
+	args := []string{"-config", configWith(t, ""), "-since", "3h", "-transcripts", dir}
+	var out bytes.Buffer
+	if err := runContextReport(context.Background(), args, &out); err != nil {
+		t.Fatal(err)
+	}
+	report := out.String()
+	for _, want := range []string{
+		"\nReturns after a pause (transcripts)\n  1 typed prompt came more than 5m after the previous request and read less than half of it from the cache: 0.3M prompt tokens not read from it, 44% of the 0.7M read in this period; pause p50 40m\n",
+		"  1 came with the context +200,000 tokens or more above its starting size; 0 after a handoff was written in the conversation\n",
+		"  Cold returns: 1 typed prompt after a pause found the cache expired and sent 44% of the prompt tokens without reading them from it (Returns after a pause)\n",
+	} {
+		if !strings.Contains(report, want) {
+			t.Errorf("missing %q in:\n%s", want, report)
+		}
+	}
+	if i, r, s := strings.Index(report, "Impact (transcripts"), strings.Index(report, "Returns after a pause (transcripts"), strings.Index(report, "Starting size of"); i > r || r > s {
+		t.Errorf("want the section after Impact, before the starting size:\n%s", report)
+	}
+
+	out.Reset()
+	if err := runContextReport(context.Background(), append(args, "-summary"), &out); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "  Cold returns: 1 typed prompt") || strings.Contains(out.String(), "Returns after a pause (transcripts") {
+		t.Errorf("want the summary line without the section:\n%s", out.String())
+	}
+
+	out.Reset()
+	if err := runContextReport(context.Background(), []string{"-config", configWith(t, ""), "-since", "3h", "-transcripts", t.TempDir()}, &out); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "Returns after a pause (transcripts)\n  none in this period") || strings.Contains(out.String(), "Cold returns") {
+		t.Errorf("want no cold return and no summary line:\n%s", out.String())
+	}
+}
+
 // floor is a conversation of project folder, in working directory cwd, that
 // started at size at minute m and read read prompt tokens, base of them below it.
 func floor(folder, cwd string, m, size int, read, base int64) ctxreport.Floor {

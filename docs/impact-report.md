@@ -21,6 +21,7 @@ The report opens with a summary of the whole window, each line naming the sectio
 - **Ignored**: the advices no reset followed.
 - **Subagents**: those that grew past the threshold, which no hook advises.
 - **Starting size**: the share of the prompt tokens that was the conversations' starting size, and the project that starts heaviest.
+- **Cold returns**: when there is at least one, the prompts you typed after a pause that found the cache expired, and the share of the prompt tokens they sent without reading them from the cache (see Returns after a pause).
 - **Late resets to reopen**: the three that read the most past the advice, with their working directory and `claude --resume <session>`, then the start of each prompt you typed between the advice and the reset, at most 15 for each, which shows what held it.
 - **To do**: the actions these lines call for, the most direct first: take the reset when the advice comes, when some came late; give subagents smaller tasks, when those past the threshold read 25% or more of the subagents' prompt tokens; trim what the heaviest project loads at start, when the starting size is 25% or more of the prompt tokens.
 
@@ -33,6 +34,14 @@ After the summary, the report has an Impact section, read from the transcripts a
 It prints the total and, apart, the part from resets that followed advice, with its share of the same base (read plus not re-read). The estimate assumes the conversation would have gone on the same way, counts input, cache read and cache write together, and is never a cost or a quota.
 
 A handoff resume is linked to the conversation that wrote the handoff, or else to the one its `Session:` line names. The report cannot see a `/clear` or a new session started without a handoff: nothing links them to the conversation they replace. Nor does it link a resume with `/jalon-resume` and no path, whose prompt holds none. A handoff asked with `/jalon-handoff` is not counted as an advice, so the reset that follows shows as one with no advice.
+
+## Returns after a pause
+
+After a pause longer than the prompt cache's lifetime, the next request writes the whole context to the cache again, at a write price instead of a read price (see [cost and quality](cost-and-quality.md)). After the Impact section, each period has a section on these cold returns: the first request answering a prompt you typed, more than 5 minutes after the conversation's previous request, which read from the cache less than half of what that previous request sent. Five minutes is the shortest cache lifetime Claude Code writes; the read share, not the length of the pause, tells an expired cache, so the report works whatever lifetime your sessions use. A request right after a compaction does not count, since the compaction changed the context, nor does a conversation's first request, a prompt you did not type, or a subagent's request.
+
+The section prints how many there were, the prompt tokens they did not read from the cache and their share of all the prompt tokens of the main conversations in the period, the median pause (the share is small, but each of these tokens was written to the cache at forty times the price of reading it), how many came with the context at or above the advice threshold over its starting size, and how many came after a handoff file was written in the same conversation, which could have been resumed instead.
+
+It cannot see a pause in the middle of a running turn, such as a long tool run or a permission prompt left waiting: only the first request after a typed prompt counts. Nor does it see a return in a new session, such as one resumed from a handoff: that starts a new conversation, not a return.
 
 ## The simulation
 
