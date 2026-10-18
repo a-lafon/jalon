@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 891 398" width="891" height="398" role="img" aria-label="Jalon advice in a Claude Code session">
+<rect width="891" height="398" rx="12" fill="#1e1e1e"/>
+<g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14" xml:space="preserve">
+<text x="24.0" y="35" fill="#e6e6e6" textLength="8.4" lengthAdjust="spacingAndGlyphs">⏺</text>
+<text x="40.9" y="35" fill="#d0d0d0" opacity="0.5" textLength="8.4" lengthAdjust="spacingAndGlyphs">▎</text>
+<text x="57.7" y="35" fill="#d0d0d0" font-weight="bold" font-style="italic" textLength="42.1" lengthAdjust="spacingAndGlyphs">Jalon</text>
+<text x="108.3" y="35" fill="#d0d0d0" font-style="italic" textLength="699.7" lengthAdjust="spacingAndGlyphs">— I recommend a handoff. The task is the same, but there&#x27;s a lot to carry over: the</text>
+<text x="40.9" y="56" fill="#d0d0d0" opacity="0.5" textLength="8.4" lengthAdjust="spacingAndGlyphs">▎</text>
+<text x="57.7" y="56" fill="#d0d0d0" font-style="italic" textLength="784.0" lengthAdjust="spacingAndGlyphs">rounding fix, the per-line VAT finding, and the pound rate still waiting on the accountant. I</text>
+<text x="40.9" y="77" fill="#d0d0d0" opacity="0.5" textLength="8.4" lengthAdjust="spacingAndGlyphs">▎</text>
+<text x="57.7" y="77" fill="#d0d0d0" font-style="italic" textLength="278.2" lengthAdjust="spacingAndGlyphs">wrote it all to the handoff file.</text>
+<text x="40.9" y="98" fill="#d0d0d0" opacity="0.5" textLength="8.4" lengthAdjust="spacingAndGlyphs">▎</text>
+<text x="57.7" y="98" fill="#d0d0d0" font-style="italic" textLength="236.0" lengthAdjust="spacingAndGlyphs">To use it, copy these lines:</text>
+<text x="40.9" y="119" fill="#d0d0d0" opacity="0.5" textLength="8.4" lengthAdjust="spacingAndGlyphs">▎</text>
+<text x="57.7" y="119" fill="#afd7ff" font-style="italic" textLength="50.6" lengthAdjust="spacingAndGlyphs">/clear</text>
+<text x="40.9" y="140" fill="#d0d0d0" opacity="0.5" textLength="8.4" lengthAdjust="spacingAndGlyphs">▎</text>
+<text x="57.7" y="140" fill="#afd7ff" font-style="italic" textLength="784.0" lengthAdjust="spacingAndGlyphs">@/private/tmp/shop/.jalon/handoffs/2026-10-18/1527-8005dfk8-accounting-reconciliation.md Read</text>
+<text x="40.9" y="161" fill="#d0d0d0" opacity="0.5" textLength="8.4" lengthAdjust="spacingAndGlyphs">▎</text>
+<text x="57.7" y="161" fill="#afd7ff" font-style="italic" textLength="800.9" lengthAdjust="spacingAndGlyphs">this file and sum up its goal, state and next step in three lines, keeping anything not checked</text>
+<text x="40.9" y="182" fill="#d0d0d0" opacity="0.5" textLength="8.4" lengthAdjust="spacingAndGlyphs">▎</text>
+<text x="57.7" y="182" fill="#afd7ff" font-style="italic" textLength="767.1" lengthAdjust="spacingAndGlyphs">marked as not checked. Then wait for my request without re-checking the state it describes.</text>
+<text x="40.9" y="203" fill="#d0d0d0" opacity="0.5" textLength="8.4" lengthAdjust="spacingAndGlyphs">▎</text>
+<text x="57.7" y="203" fill="#d0d0d0" font-style="italic" textLength="25.3" lengthAdjust="spacingAndGlyphs">The</text>
+<text x="91.4" y="203" fill="#d0d0d0" font-style="italic" textLength="50.6" lengthAdjust="spacingAndGlyphs">prompt</text>
+<text x="150.4" y="203" fill="#d0d0d0" font-style="italic" textLength="42.1" lengthAdjust="spacingAndGlyphs">cache</text>
+<text x="201.0" y="203" fill="#d0d0d0" font-style="italic" textLength="42.1" lengthAdjust="spacingAndGlyphs">keeps</text>
+<text x="251.6" y="203" fill="#d0d0d0" font-style="italic" textLength="33.7" lengthAdjust="spacingAndGlyphs">this</text>
+<text x="293.8" y="203" fill="#d0d0d0" font-style="italic" textLength="59.0" lengthAdjust="spacingAndGlyphs">context</text>
+<text x="361.2" y="203" fill="#d0d0d0" font-style="italic" textLength="25.3" lengthAdjust="spacingAndGlyphs">for</text>
+<text x="394.9" y="203" fill="#d0d0d0" font-style="italic" textLength="8.4" lengthAdjust="spacingAndGlyphs">5</text>
+<text x="411.8" y="203" fill="#d0d0d0" font-style="italic" textLength="67.4" lengthAdjust="spacingAndGlyphs">minutes.</text>
+<text x="487.6" y="203" fill="#d0d0d0" font-style="italic" textLength="42.1" lengthAdjust="spacingAndGlyphs">After</text>
+<text x="538.2" y="203" fill="#d0d0d0" font-style="italic" textLength="8.4" lengthAdjust="spacingAndGlyphs">a</text>
+<text x="555.1" y="203" fill="#d0d0d0" font-style="italic" textLength="50.6" lengthAdjust="spacingAndGlyphs">longer</text>
+<text x="614.1" y="203" fill="#d0d0d0" font-style="italic" textLength="50.6" lengthAdjust="spacingAndGlyphs">pause,</text>
+<text x="673.1" y="203" fill="#d0d0d0" font-style="italic" textLength="25.3" lengthAdjust="spacingAndGlyphs">the</text>
+<text x="706.8" y="203" fill="#d0d0d0" font-style="italic" textLength="33.7" lengthAdjust="spacingAndGlyphs">next</text>
+<text x="749.0" y="203" fill="#d0d0d0" font-style="italic" textLength="59.0" lengthAdjust="spacingAndGlyphs">request</text>
+<text x="816.4" y="203" fill="#d0d0d0" font-style="italic" textLength="25.3" lengthAdjust="spacingAndGlyphs">has</text>
+<text x="850.1" y="203" fill="#d0d0d0" font-style="italic" textLength="16.9" lengthAdjust="spacingAndGlyphs">to</text>
+<text x="40.9" y="224" fill="#d0d0d0" opacity="0.5" textLength="8.4" lengthAdjust="spacingAndGlyphs">▎</text>
+<text x="57.7" y="224" fill="#d0d0d0" font-style="italic" textLength="42.1" lengthAdjust="spacingAndGlyphs">write</text>
+<text x="108.3" y="224" fill="#d0d0d0" font-style="italic" textLength="16.9" lengthAdjust="spacingAndGlyphs">it</text>
+<text x="133.6" y="224" fill="#d0d0d0" font-style="italic" textLength="25.3" lengthAdjust="spacingAndGlyphs">all</text>
+<text x="167.3" y="224" fill="#d0d0d0" font-style="italic" textLength="50.6" lengthAdjust="spacingAndGlyphs">again,</text>
+<text x="226.3" y="224" fill="#d0d0d0" font-style="italic" textLength="16.9" lengthAdjust="spacingAndGlyphs">so</text>
+<text x="251.6" y="224" fill="#d0d0d0" font-style="italic" textLength="33.7" lengthAdjust="spacingAndGlyphs">it&#x27;s</text>
+<text x="293.8" y="224" fill="#d0d0d0" font-style="italic" textLength="33.7" lengthAdjust="spacingAndGlyphs">best</text>
+<text x="335.9" y="224" fill="#d0d0d0" font-style="italic" textLength="16.9" lengthAdjust="spacingAndGlyphs">to</text>
+<text x="361.2" y="224" fill="#d0d0d0" font-style="italic" textLength="16.9" lengthAdjust="spacingAndGlyphs">do</text>
+<text x="386.5" y="224" fill="#d0d0d0" font-style="italic" textLength="33.7" lengthAdjust="spacingAndGlyphs">this</text>
+<text x="428.6" y="224" fill="#d0d0d0" font-style="italic" textLength="50.6" lengthAdjust="spacingAndGlyphs">before</text>
+<text x="487.6" y="224" fill="#d0d0d0" font-style="italic" textLength="33.7" lengthAdjust="spacingAndGlyphs">such</text>
+<text x="529.8" y="224" fill="#d0d0d0" font-style="italic" textLength="8.4" lengthAdjust="spacingAndGlyphs">a</text>
+<text x="546.7" y="224" fill="#d0d0d0" font-style="italic" textLength="50.6" lengthAdjust="spacingAndGlyphs">pause.</text>
+<text x="24.0" y="266" fill="#949494" textLength="8.4" lengthAdjust="spacingAndGlyphs">✻</text>
+<text x="40.9" y="266" fill="#949494" textLength="168.6" lengthAdjust="spacingAndGlyphs">Baked for 53s · done</text>
+<text x="217.9" y="266" fill="#949494" textLength="33.7" lengthAdjust="spacingAndGlyphs">3:28</text>
+<text x="260.0" y="266" fill="#949494" textLength="16.9" lengthAdjust="spacingAndGlyphs">PM</text>
+<text x="24.0" y="308" fill="#808080" textLength="843.0" lengthAdjust="spacingAndGlyphs">────────────────────────────────────────────────────────────────────────────────────────────────────</text>
+<text x="24.0" y="329" fill="#d0d0d0" textLength="8.4" lengthAdjust="spacingAndGlyphs">❯</text>
+<text x="24.0" y="350" fill="#808080" textLength="843.0" lengthAdjust="spacingAndGlyphs">────────────────────────────────────────────────────────────────────────────────────────────────────</text>
+<text x="40.9" y="371" fill="#949494" textLength="42.1" lengthAdjust="spacingAndGlyphs">jalon</text>
+<text x="91.4" y="371" fill="#ff5f5f" textLength="25.3" lengthAdjust="spacingAndGlyphs">▰▰▰</text>
+<text x="125.2" y="371" fill="#949494" textLength="160.2" lengthAdjust="spacingAndGlyphs">49K · reset advised</text>
+</g>
+</svg>
