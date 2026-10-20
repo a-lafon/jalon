@@ -33,8 +33,8 @@ var hookTimeout = 500 * time.Millisecond
 // the advice cannot drift between them. {tokens} is filled in the openings;
 // {dir} (the absolute handoff folder), {name} (the handoff file name prefix)
 // and {header} (the handoff's first lines) in the body, and so are the
-// client's commands: {clear}, {compact}, and {resume}, the line that resumes
-// from the handoff (see resumeLine).
+// client's commands: {clear}, {compact}, {resume}, the line that resumes
+// from the handoff (see resumeLine), and {update} (see updateLine).
 const (
 	promptOpening = `Jalon: this conversation holds about {tokens}K tokens of context. Answer the user's message first.
 Then end your reply with `
@@ -57,8 +57,10 @@ Add, as your last message, `
    what to drop>.
 While background work you started that will report back (agents, background commands) is still running, do not recommend
 a new session or {clear}: its result would reach a conversation that lost why it was started, or end with this session.
-Recommend a compact whose line keeps the running work, what to do with its result, and the handoff path and first lines
-of option 2; add one line saying the user can ask for that handoff once the work has reported.
+Write option 2's handoff now, while the whole conversation is in context, with the running work and what to do with its
+result in its current state. Then recommend a compact whose line keeps the running work, what to do with its result, and
+the handoff's full path as the record to update when the work reports. Then give, in a code block, the line the user
+copies once the work has reported: {update}.
 {cache}Keep the section under 10 lines, apart from the handoff file. Give it in this reply only: do not repeat it in later replies.`
 )
 
@@ -89,6 +91,16 @@ const resumeRequest = `a request, in the user's language,
    checked, then wait for the user's request without checking again the state it describes; the request names no task
    or next step`
 
+// updateLine is the line the user copies once background work has reported:
+// the client's handoff command, which updates the session's handoff, else a
+// request that does the same.
+func updateLine(cmds client.Commands) string {
+	if cmds.Handoff != "" {
+		return cmds.Handoff + ", alone"
+	}
+	return "a request, in the user's language, to update that handoff with what changed and give the lines to resume from it"
+}
+
 // resumeLine is the line that resumes from the handoff: the client's resume
 // command with the path when it has one, which does what resumeRequest asks,
 // else the path attached and resumeRequest.
@@ -101,8 +113,9 @@ func resumeLine(cmds client.Commands) string {
 
 // handoffOpening answers the client's handoff command: the advice's body,
 // with the handoff the user asked for in place of the option the size would
-// choose. {focus} is the user's words after the command, when there are any.
-const handoffOpening = `Jalon: the user typed {command} to ask for a handoff of this conversation now.{focus}
+// choose. {focus} is the user's words after the command, when there are any;
+// {update} names the session's handoff when it is already written.
+const handoffOpening = `Jalon: the user typed {command} to ask for a handoff of this conversation now.{focus}{update}
 Recommend option 2, the handoff, whatever the context size, and add one line with option 3's ready compact line, in case
 the user prefers compacting. End your reply with `
 
@@ -201,7 +214,7 @@ func runPromptHook(ctx context.Context, args []string, stdin io.Reader, out io.W
 				return nil
 			}
 		}
-		body, ok := recordAdvice(dir, adapter, prompt, st, tail.CacheTTL, now)
+		body, ok := recordAdvice(dir, adapter, prompt, st, tail.CacheTTL, now, false)
 		if !ok {
 			return nil
 		}
@@ -311,7 +324,7 @@ func runStopHook(ctx context.Context, args []string, stdin io.Reader, out io.Wri
 			_ = advisor.MarkAdvised(dir, ev.Session, st.Size, now, ev.ID)
 			return nil
 		}
-		body, ok := recordAdvice(dir, adapter, ev.Prompt, st, tail.CacheTTL, now)
+		body, ok := recordAdvice(dir, adapter, ev.Prompt, st, tail.CacheTTL, now, false)
 		if !ok {
 			return nil
 		}
@@ -358,11 +371,18 @@ func handoffAsked(text string, adapter client.Adapter) (string, bool) {
 // askHandoff answers the handoff command at any size: it records the size as
 // for any prompt, then names the handoff and records it as an advice does, so
 // its thread, the stop hook's reminder and the write-back note work as for an
-// advice, and the next advice comes one step later.
+// advice, and the next advice comes one step later. When the session already
+// wrote its proposed handoff, as before a compaction while background work ran,
+// it keeps that name and asks to update the file in place.
 func askHandoff(dir string, adapter client.Adapter, p client.Prompt, tail client.Tail, cfg config.Config, words string, now time.Time) []byte {
 	measure(dir, adapter, p, tail, cfg, now)
 	st, _ := advisor.Load(dir, p.Session)
-	body, ok := recordAdvice(dir, adapter, p, st, tail.CacheTTL, now)
+	handoffDir := handoffFolder(p.Dir)
+	written := ""
+	if st.Proposed != "" {
+		written = lastHandoff(handoffDir, st.Proposed+"-")
+	}
+	body, ok := recordAdvice(dir, adapter, p, st, tail.CacheTTL, now, written != "")
 	if !ok {
 		return nil
 	}
@@ -370,11 +390,17 @@ func askHandoff(dir string, adapter client.Adapter, p client.Prompt, tail client
 	if words != "" {
 		focus = " The user's words after the command say what to stress: " + strconv.Quote(words) + "."
 	}
+	update := ""
+	if written != "" {
+		update = " The handoff " + filepath.Join(handoffDir, written) + " is already written in this session: update it in place" +
+			" with what changed since (current state, what was checked, decisions, next steps, the user's latest request)," +
+			" keeping its first lines, instead of writing another file."
+	}
 	message := handoffAskedPrefix + "."
 	if st.Size > 0 {
 		message = handoffAskedPrefix + " at " + cli.TokensK(float64(st.Size)) + " tokens."
 	}
-	opening := strings.NewReplacer("{command}", adapter.Commands().Handoff, "{focus}", focus).Replace(handoffOpening)
+	opening := strings.NewReplacer("{command}", adapter.Commands().Handoff, "{focus}", focus, "{update}", update).Replace(handoffOpening)
 	reply, err := adapter.Reply(message, opening+body)
 	if err != nil {
 		return nil
@@ -445,26 +471,27 @@ func measure(dir string, adapter client.Adapter, p client.Prompt, tail client.Ta
 
 // recordAdvice does what an advice at the state's size needs before it is
 // shown: it names the next handoff, creates its folder, and records the advice
-// at the prompt of p, so the next prompt does not repeat it. It returns the
+// at the prompt of p, so the next prompt does not repeat it. With keep, it
+// keeps the state's proposed name, parent and thread instead. It returns the
 // instruction body, filled in, with the cache lifetime ttl when it is not 0.
-func recordAdvice(dir string, adapter client.Adapter, p client.Prompt, st advisor.Session, ttl time.Duration, now time.Time) (string, bool) {
+func recordAdvice(dir string, adapter client.Adapter, p client.Prompt, st advisor.Session, ttl time.Duration, now time.Time, keep bool) (string, bool) {
 	handoffDir := handoffFolder(p.Dir)
-	// A handoff written from the last advice's name is the parent of the next one.
-	parent := st.Parent
-	if st.Proposed != "" {
-		if name := lastHandoff(handoffDir, st.Proposed+"-"); name != "" {
-			parent = name
+	parent, thread, name := st.Parent, st.Thread, st.Proposed
+	if !keep {
+		// A handoff written from the last advice's name is the parent of the next one.
+		if st.Proposed != "" {
+			if written := lastHandoff(handoffDir, st.Proposed+"-"); written != "" {
+				parent = written
+			}
 		}
-	}
-	thread := st.Thread
-	if thread == "" {
-		var err error
-		if thread, err = newThreadID(threadRand); err != nil {
-			return "", false
+		if thread == "" {
+			var err error
+			if thread, err = newThreadID(threadRand); err != nil {
+				return "", false
+			}
 		}
+		name = now.Format("2006-01-02") + "/" + now.Format("1504") + "-" + thread
 	}
-	day := now.Format("2006-01-02")
-	name := day + "/" + now.Format("1504") + "-" + thread
 	// The folder is best effort: the advice is given even when it cannot be made.
 	if p.Dir != "" {
 		_ = ensureHandoffFolder(projectRoot(p.Dir))
@@ -504,7 +531,7 @@ func fillBody(adapter client.Adapter, handoffDir, name, header string, ttl time.
 		cache = strings.ReplaceAll(cacheLine, "{ttl}", cacheLifetime(ttl))
 	}
 	// {resume} and {cache} go first: the line {resume} puts in holds {dir} and {name}.
-	body := strings.NewReplacer("{resume}", resumeLine(cmds), "{cache}", cache).Replace(instructionBody)
+	body := strings.NewReplacer("{resume}", resumeLine(cmds), "{cache}", cache, "{update}", updateLine(cmds)).Replace(instructionBody)
 	return strings.NewReplacer(
 		"{dir}", handoffDir,
 		"{name}", name,

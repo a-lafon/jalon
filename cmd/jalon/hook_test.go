@@ -1636,6 +1636,46 @@ func TestPromptHookAnswersTheHandoffCommand(t *testing.T) {
 			t.Errorf("write-back = %q", ctxt)
 		}
 	})
+	t.Run("written then compacted", func(t *testing.T) {
+		dir, cfg := hookState(t, "s1", 120_000)
+		writeJalonSkills(t)
+		repo := gitRepo(t)
+		runPrompt(t, cfg, handoffInput("s1", "p1", repo, "/jalon-handoff"))
+		before, _ := advisor.Load(dir, "s1")
+		written := writeHandoff(t, repo, before.Proposed+"-alpha.md")
+		appendTranscript(t, "s1", `{"type":"system","subtype":"compact_boundary","compactMetadata":{"trigger":"manual","postTokens":22000}}`+"\n", assistantLine(30_000))
+		ctxt := parse(t, runPrompt(t, cfg, handoffInput("s1", "p2", repo, "/jalon-handoff"))).HookSpecificOutput.AdditionalContext
+		if !strings.Contains(ctxt, "The handoff "+written+" is already written in this session: update it in place") ||
+			!strings.Contains(ctxt, "/"+before.Proposed+"-<short-slug>.md") {
+			t.Errorf("additionalContext = %q", ctxt)
+		}
+		if st, _ := advisor.Load(dir, "s1"); st.Proposed != before.Proposed || st.Parent != before.Parent || st.Thread != before.Thread || st.AdvisedPrompt != "p2" {
+			t.Errorf("state = %+v, want the name, parent and thread of %+v", st, before)
+		}
+	})
+	t.Run("proposed but not written", func(t *testing.T) {
+		dir, cfg := hookState(t, "s1", 120_000)
+		writeJalonSkills(t)
+		repo := gitRepo(t)
+		runPrompt(t, cfg, handoffInput("s1", "p1", repo, "/jalon-handoff"))
+		before, _ := advisor.Load(dir, "s1")
+		// A later minute names a new handoff, so a kept name would show.
+		ctxt := parse(t, runPromptAt(t, cfg, handoffInput("s1", "p2", repo, "/jalon-handoff"), hookNow.Add(time.Minute))).HookSpecificOutput.AdditionalContext
+		if strings.Contains(ctxt, "already written") {
+			t.Errorf("additionalContext = %q", ctxt)
+		}
+		if st, _ := advisor.Load(dir, "s1"); st.Proposed == before.Proposed {
+			t.Errorf("proposed = %q, want a new name", st.Proposed)
+		}
+	})
+	t.Run("line to copy after background work", func(t *testing.T) {
+		_, cfg := hookState(t, "s1", 120_000)
+		writeJalonSkills(t)
+		ctxt := parse(t, runPrompt(t, cfg, handoffInput("s1", "p1", gitRepo(t), "/jalon-handoff"))).HookSpecificOutput.AdditionalContext
+		if !strings.Contains(ctxt, "copies once the work has reported: /jalon-handoff, alone.") {
+			t.Errorf("additionalContext = %q", ctxt)
+		}
+	})
 	if strings.HasPrefix(handoffAskedPrefix, advisor.MessagePrefix) {
 		t.Error("the handoff message starts like an advice: the report would count it")
 	}

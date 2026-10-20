@@ -33,7 +33,7 @@ With the skills, `/jalon-resume` finds the latest handoff of the project itself,
 
 ## A handoff when you choose
 
-`/jalon-handoff [what to stress]` asks for a handoff now, at any size, for example before a pause or at the end of a step. Jalon's prompt hook sees the command and gives the model the advice's own instruction, with the handoff's path and first lines, so it is written as an advised one would be, in the same thread; the model recommends the handoff and adds a `/compact` line in case you prefer compacting. It counts as an advice for what follows: the stop hook reminds once if the section is missing, the write-back note keeps the handoff up to date, and the next advice comes one step later. The context report does not count it as an advice. Without Jalon's hooks, the command says so and writes nothing.
+`/jalon-handoff [what to stress]` asks for a handoff now, at any size, for example before a pause or at the end of a step. Jalon's prompt hook sees the command and gives the model the advice's own instruction, with the handoff's path and first lines, so it is written as an advised one would be, in the same thread; the model recommends the handoff and adds a `/compact` line in case you prefer compacting. When the conversation already wrote its handoff, at an advice or an earlier `/jalon-handoff`, even before a compaction, the model updates that file in place instead of writing a second one. It counts as an advice for what follows: the stop hook reminds once if the section is missing, the write-back note keeps the handoff up to date, and the next advice comes one step later. The context report does not count it as an advice. Without Jalon's hooks, the command says so and writes nothing.
 
 ## Threads
 
