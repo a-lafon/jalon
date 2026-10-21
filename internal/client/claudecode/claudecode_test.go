@@ -153,9 +153,9 @@ func TestReadStop(t *testing.T) {
 
 func TestStopReply(t *testing.T) {
 	tests := map[string]struct{ reason, message, want string }{
-		"without a message": {"Jalon: reminder …", "", `{"decision":"block","reason":"Jalon: reminder …"}` + "\n"},
+		"without a message": {"Jalon: reminder …", "", `{"hookSpecificOutput":{"additionalContext":"Jalon: reminder …","hookEventName":"Stop"}}` + "\n"},
 		"with a message": {"Jalon: context at 296K tokens. <dir> & more", "Jalon: context at 296K tokens, a reset proposal follows.",
-			`{"decision":"block","reason":"Jalon: context at 296K tokens. <dir> & more","systemMessage":"Jalon: context at 296K tokens, a reset proposal follows."}` + "\n"},
+			`{"hookSpecificOutput":{"additionalContext":"Jalon: context at 296K tokens. <dir> & more","hookEventName":"Stop"},"systemMessage":"Jalon: context at 296K tokens, a reset proposal follows."}` + "\n"},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {

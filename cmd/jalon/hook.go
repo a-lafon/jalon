@@ -302,7 +302,7 @@ func runStopHook(ctx context.Context, args []string, stdin io.Reader, out io.Wri
 				reason += "The handoff " + filepath.Join(handoffDir, written) + " is already written: do not write another file, give the section with its lines to copy for it.\n"
 			}
 			// One sentence, not the body: the model got the body at the start of the
-			// turn, and Claude Code's terminal prints the whole reason as an error.
+			// turn, and Claude Code's terminal prints the whole reason.
 			reason += "Add now, as your last message, that section: a Markdown blockquote starting with **Jalon** — that recommends ONE option, a new session, a handoff written to " +
 				filepath.Join(handoffDir, st.Proposed) + "-<short-slug>.md with the lines to copy, or a " + adapter.Commands().Compact + " line."
 			reply, err := stopper.StopReply(reason, "")

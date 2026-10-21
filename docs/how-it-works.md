@@ -35,7 +35,7 @@ While background work the model started that will report back (agents, backgroun
 
 The section also says how long the prompt cache keeps the context, an hour or 5 minutes, as the conversation's last request wrote it to the cache. After a longer pause the next request writes the whole context to the cache again, and so does a `/compact` or a handoff taken then, which costs forty times reading it with the one-hour cache (see [cost and quality](cost-and-quality.md)). So a reset is best taken before a pause. When the last request wrote nothing to the cache, the line is left out.
 
-When the threshold is crossed during a turn, the section comes as a message of its own after the reply, and the terminal shows `Jalon: context at 296K tokens, a reset proposal follows.` The terminal also shows what the stop hook asked the model, labelled `Stop hook error`, and `Stop hook error occurred` below the prompt: Claude Code's wording for a hook that makes the model go on, not an error of Jalon.
+When the threshold is crossed during a turn, the section comes as a message of its own after the reply, and the terminal shows `Jalon: context at 296K tokens, a reset proposal follows.` The terminal also shows what the stop hook asked the model, labelled `Stop hook feedback`. The hook sends it as additional context, which Claude Code reads since 2.1.163 (checked with 2.1.306); an older Claude Code ignores it, and the section does not come.
 
 You run the command; Jalon never does.
 
