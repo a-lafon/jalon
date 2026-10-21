@@ -519,6 +519,11 @@ func isAdvice(e entry) bool {
 	case a.Type == "hook_system_message" && a.HookEvent == "UserPromptSubmit":
 		var content string
 		return json.Unmarshal(a.Content, &content) == nil && strings.HasPrefix(content, advisor.MessagePrefix)
+	case a.Type == "hook_additional_context" && a.HookEvent == "Stop":
+		var content []string
+		return json.Unmarshal(a.Content, &content) == nil && len(content) > 0 && strings.HasPrefix(content[0], advisor.MessagePrefix)
+	// Before 0.5.0 the stop hook blocked with a decision, which older
+	// transcripts still hold.
 	case a.Type == "hook_blocking_error" && a.HookEvent == "Stop":
 		return a.BlockingError != nil && strings.HasPrefix(a.BlockingError.BlockingError, advisor.MessagePrefix)
 	}

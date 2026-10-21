@@ -359,6 +359,30 @@ func stopBlock(uuid, ts, reason string) string {
 		uuid, ts, reason)
 }
 
+// stopContext is the entry Claude Code records when a Stop hook makes the model
+// go on with additional context.
+func stopContext(uuid, ts, context string) string {
+	return fmt.Sprintf(`{"type":"attachment","uuid":%q,"timestamp":%q,"sessionId":"s1","attachment":{"type":"hook_additional_context","content":[%q],"hookName":"Stop","toolUseID":"t1","hookEvent":"Stop"}}`,
+		uuid, ts, context)
+}
+
+func TestStopHookContextCountsAsAdvice(t *testing.T) {
+	lines := []string{
+		humanText("2026-10-06T08:00:00Z", "first"),
+		assistant("2026-10-06T08:00:01Z", "m1", 1, 296000, 0, 5),
+		stopContext("stop1", "2026-10-06T08:00:02Z", "Jalon: context at 296K tokens. Your answer to the user is done and shown: do not repeat it."),
+		stopContext("stop2", "2026-10-06T08:00:03Z", "Jalon: reminder, context at 296K tokens: your reply did not end with the section"),
+		stopContext("stop3", "2026-10-06T08:00:03Z", "Another stop hook: tests failed."),
+	}
+	c, err := NewReader().Read("/p/s1.jsonl", strings.NewReader(strings.Join(lines, "\n")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.Advices) != 1 || c.Advices[0].UUID != "stop1" {
+		t.Fatalf("advices = %+v, want stop1 only", c.Advices)
+	}
+}
+
 func TestStopHookAdviceCountsAtTheTurnItEnds(t *testing.T) {
 	lines := []string{
 		humanText("2026-10-06T08:00:00Z", "first"),

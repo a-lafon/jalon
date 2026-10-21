@@ -58,7 +58,7 @@ To draw the pole above the prompt instead of in the status line, with Claude Cod
 
 Then start a new Claude Code session, in the terminal or in VS Code, and work as usual. `jalon init --dry-run` shows what it would change; see [configuration](docs/configuration.md) for its flags.
 
-When the stop hook makes the model go on, the terminal labels what it asked the model `Stop hook error`: that is Claude Code's label for any hook that makes the model go on, not a failure of Jalon ([how it works](docs/how-it-works.md#what-you-see)).
+When the stop hook makes the model go on, the terminal shows what it asked the model, labelled `Stop hook feedback`; this needs Claude Code 2.1.163 or later ([how it works](docs/how-it-works.md#what-you-see)).
 
 ## Commands
 

@@ -1084,9 +1084,13 @@ func runStop(t *testing.T, configPath, stdin string) string {
 }
 
 type stopOutput struct {
-	Decision      string  `json:"decision"`
-	Reason        string  `json:"reason"`
+	HookSpecificOutput struct {
+		HookEventName     string `json:"hookEventName"`
+		AdditionalContext string `json:"additionalContext"`
+	} `json:"hookSpecificOutput"`
 	SystemMessage *string `json:"systemMessage"`
+	// Reason is the additional context, which makes the model go on.
+	Reason string `json:"-"`
 }
 
 func parseStop(t *testing.T, raw string) stopOutput {
@@ -1095,9 +1099,10 @@ func parseStop(t *testing.T, raw string) stopOutput {
 	if err := json.Unmarshal([]byte(raw), &out); err != nil {
 		t.Fatalf("output is not JSON: %v\n%s", err, raw)
 	}
-	if out.Decision != "block" {
-		t.Errorf("decision = %q, want block", out.Decision)
+	if out.HookSpecificOutput.HookEventName != "Stop" {
+		t.Errorf("hookEventName = %q, want Stop", out.HookSpecificOutput.HookEventName)
 	}
+	out.Reason = out.HookSpecificOutput.AdditionalContext
 	return out
 }
 
@@ -1311,7 +1316,7 @@ func TestStopHookCrossingWithASectionAlreadyGiven(t *testing.T) {
 		appendTranscript(t, s, typedPrompt("p2"), assistantLine(296_000))
 	}
 	// The name in bold within an answer is not a section: the hook still blocks.
-	if out := parseStop(t, runStop(t, cfg, stopInput("s2", "p2", repo, "Done: **Jalon** now counts the floor.", false))); out.Decision != "block" {
+	if out := parseStop(t, runStop(t, cfg, stopInput("s2", "p2", repo, "Done: **Jalon** now counts the floor.", false))); out.Reason == "" {
 		t.Errorf("stop = %+v, want a block", out)
 	}
 	// The reply already ends with a section the model gave of its own.

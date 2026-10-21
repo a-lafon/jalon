@@ -130,9 +130,15 @@ func (Adapter) Reply(userMessage, modelContext string) ([]byte, error) {
 }
 
 // StopReply makes Claude Code go on with the turn: the reason reaches the model
-// as a meta user message, and is not shown to the user.
+// as additional context, which the terminal labels "Stop hook feedback" (since
+// 2.1.163); a "decision": "block" would be labeled "Stop hook error".
 func (Adapter) StopReply(reason, userMessage string) ([]byte, error) {
-	out := map[string]any{"decision": "block", "reason": reason}
+	out := map[string]any{
+		"hookSpecificOutput": map[string]any{
+			"hookEventName":     "Stop",
+			"additionalContext": reason,
+		},
+	}
 	if userMessage != "" {
 		out["systemMessage"] = userMessage
 	}
