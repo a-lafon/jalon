@@ -2,6 +2,22 @@
 
 Every way ends with `jalon init`, which adds the hooks and the status line to `~/.claude/settings.json`, and the `/jalon-*` commands in `~/.claude/skills/jalon-*/`; `jalon init --dry-run` shows what it would change first.
 
+## The install script
+
+On macOS or Linux, with `curl` or `wget`:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/a-lafon/jalon/main/install.sh | sh
+jalon init
+```
+
+[install.sh](../install.sh) downloads the latest release's archive for your OS and architecture, checks it against the release's `checksums.txt`, and puts `jalon` in `~/.local/bin`. When that folder is not on your `PATH`, the script says so: run `~/.local/bin/jalon init`, which records that full path in the hooks. It never runs `jalon init` for you. Two variables change what it does:
+
+- `JALON_VERSION=v0.4.0` installs that release instead of the latest;
+- `JALON_INSTALL_DIR=/usr/local/bin` installs there instead.
+
+A file fetched with `curl` or `wget` is not quarantined by macOS, so the unsigned binary runs as is. To read the script before running it, download it first, then run `sh install.sh`.
+
 ## Homebrew
 
 ```sh
@@ -58,6 +74,7 @@ A file fetched with `curl` or `gh release download` is not marked.
 
 ## Update
 
+- The install script: run it again, with the same `JALON_INSTALL_DIR` if you set one.
 - Homebrew: `brew upgrade jalon`.
 - Go: run the `go install` line again.
 - An archive: download the new one and replace `jalon` at the same path.

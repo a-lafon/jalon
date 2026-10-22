@@ -45,14 +45,14 @@ Every figure here comes from my own sessions with one model: a hint, not a proof
 
 ## Install
 
-With [Homebrew](https://brew.sh) on macOS:
+On macOS or Linux:
 
 ```sh
-brew install a-lafon/tap/jalon
+curl -fsSL https://raw.githubusercontent.com/a-lafon/jalon/main/install.sh | sh
 jalon init    # adds the hooks and the status line to ~/.claude/settings.json, and the /jalon-* commands
 ```
 
-For Linux and the other ways, see [installing Jalon](docs/install.md).
+The script puts `jalon` in `~/.local/bin` after checking it against the release's checksums; when that folder is not on your `PATH`, run `~/.local/bin/jalon init`. With [Homebrew](https://brew.sh): `brew install a-lafon/tap/jalon`. For the other ways, see [installing Jalon](docs/install.md).
 
 To draw the pole above the prompt instead of in the status line, with Claude Code 2.1.292 or later, run `jalon init --mod`: see [the pole above the prompt](docs/how-it-works.md#the-pole-above-the-prompt) for its limits.
 

@@ -1,0 +1,72 @@
+name: Install
+
+# install.sh, run as a new user would on each supported OS and architecture,
+# against the published release: when the script changes, after each release,
+# and every night, so a broken release archive shows within a day.
+on:
+  push:
+    branches: [main]
+    paths: [install.sh, .github/install-smoke.sh, .github/workflows/install.yml]
+  pull_request:
+    paths: [install.sh, .github/install-smoke.sh, .github/workflows/install.yml]
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+  schedule:
+    - cron: "37 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  shellcheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # shellcheck comes with the ubuntu runner image.
+      - run: shellcheck install.sh .github/install-smoke.sh
+
+  install:
+    # A failed release has nothing new to install.
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Each image starts bare: setup adds only the downloader a user has.
+          - { runner: ubuntu-latest, image: "ubuntu:24.04", setup: "apt-get update -qq && apt-get install -y -qq curl ca-certificates" }
+          - { runner: ubuntu-latest, image: "debian:12-slim", setup: "apt-get update -qq && apt-get install -y -qq wget ca-certificates" }
+          # busybox wget, musl: the binary is static.
+          - { runner: ubuntu-latest, image: "alpine:3.20", setup: "true" }
+          - { runner: ubuntu-24.04-arm, image: "alpine:3.20", setup: "true" }
+          - { runner: macos-latest }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # docker run rather than a job container: the same line runs on a laptop.
+      - name: Install in ${{ matrix.image }}
+        if: matrix.image
+        run: docker run --rm -v "$PWD:/src:ro" "$IMAGE" sh -c "$SETUP >/dev/null && sh /src/.github/install-smoke.sh"
+        env:
+          IMAGE: ${{ matrix.image }}
+          SETUP: ${{ matrix.setup }}
+
+      - name: Install on macOS
+        if: ${{ !matrix.image }}
+        run: |
+          export HOME="$RUNNER_TEMP/home"
+          mkdir -p "$HOME"
+          sh .github/install-smoke.sh
