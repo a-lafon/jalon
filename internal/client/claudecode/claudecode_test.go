@@ -60,8 +60,8 @@ func TestCommands(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	skillsDir := filepath.Join(home, ".claude", "skills")
-	resume, _ := skills.ReadFile("skills/jalon-resume/SKILL.md")
-	handoff, _ := skills.ReadFile("skills/jalon-handoff/SKILL.md")
+	resume, _ := os.ReadFile(filepath.Join("testdata", "skills", "jalon-resume", "SKILL.md"))
+	handoff, _ := os.ReadFile(filepath.Join("testdata", "skills", "jalon-handoff", "SKILL.md"))
 	old := []byte("---\nname: jalon\n---\n" + skillMarker + "\n")
 	for _, tt := range []struct {
 		name            string

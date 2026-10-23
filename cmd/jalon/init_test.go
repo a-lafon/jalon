@@ -28,6 +28,8 @@ func withExecutable(t *testing.T, exe string) {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", home)
+	// Codex reads its hooks there, else under ~/.codex.
+	t.Setenv("CODEX_HOME", "")
 	oldExe, oldLook, oldRun := executable, lookPath, runClient
 	executable = func() (string, error) { return exe, nil }
 	lookPath = func(string) (string, error) { return "", exec.ErrNotFound }
@@ -822,28 +824,6 @@ func TestInitWithoutTheSkill(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Dir(filepath.Dir(jalonSkills(t)[0].Path))); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("skills folder created: %v", err)
-	}
-}
-
-func TestInitClientWithoutASkill(t *testing.T) {
-	withExecutable(t, testExe)
-	// Claude Code's hooks and settings, without its skills or mod.
-	adapters["hooks-only"] = struct {
-		client.Adapter
-		client.Installer
-	}{claudecode.Adapter{}, claudecode.Adapter{}}
-	t.Cleanup(func() { delete(adapters, "hooks-only") })
-	settings := filepath.Join(t.TempDir(), "settings.json")
-
-	// The default skills are skipped where the client has none.
-	runInitOK(t, "-settings", settings, "-client", "hooks-only")
-	if b, _ := os.ReadFile(settings); !strings.Contains(string(b), "hook prompt") {
-		t.Errorf("settings = %s", b)
-	}
-	// An explicit -skill is refused.
-	var out bytes.Buffer
-	if err := runInit([]string{"-settings", settings, "-client", "hooks-only", "-skill"}, &out); err == nil || !strings.Contains(err.Error(), "hooks-only has no skill") {
-		t.Errorf("err = %v", err)
 	}
 }
 

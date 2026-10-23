@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/a-lafon/jalon/internal/cli"
@@ -37,7 +38,7 @@ func runInit(args []string, out io.Writer) error {
 	clientName := flags.String("client", defaultClient, "coding agent to install Jalon into")
 	statusLine := flags.Bool("statusline", true, "install the status line (terminal only; never replaces another one)")
 	mod := flags.Bool("mod", false, "install the client's mod in place of the status line (Claude Code 2.1.292 or later; downloads it from GitHub)")
-	skill := flags.Bool("skill", true, "install the /jalon-* commands: resume, recap, handoff, report, help (Claude Code: ~/.claude/skills/jalon-*/); -skill=false leaves them out")
+	skill := flags.Bool("skill", true, "install the /jalon-* commands: resume, recap, handoff, report, help (Claude Code: ~/.claude/skills/jalon-*/, Codex: ~/.agents/skills/jalon-*/); -skill=false leaves them out")
 	uninstall := flags.Bool("uninstall", false, "remove what Jalon installed")
 	dryRun := flags.Bool("dry-run", false, "print what would change, write nothing")
 	settingsPath := flags.String("settings", "", "client settings file (default: the client's user settings)")
@@ -48,7 +49,7 @@ func runInit(args []string, out io.Writer) error {
 	}
 	// Only the threshold flags given are set: 0 is a value to refuse, not "unset".
 	var tokens, stepTokens *int
-	statusLineSet, skillSet := false, false
+	statusLineSet := false
 	flags.Visit(func(f *flag.Flag) {
 		switch f.Name {
 		case "advise-tokens":
@@ -57,8 +58,6 @@ func runInit(args []string, out io.Writer) error {
 			stepTokens = adviseStepTokens
 		case "statusline":
 			statusLineSet = true
-		case "skill":
-			skillSet = true
 		}
 	})
 	setThresholds := tokens != nil || stepTokens != nil
@@ -95,12 +94,6 @@ func runInit(args []string, out io.Writer) error {
 			return fmt.Errorf("%w; nothing written", err)
 		}
 	}
-	skillInstaller, hasSkill := adapter.(client.SkillInstaller)
-	// The skills are installed by default where the client takes them: only an
-	// explicit -skill is refused by a client without.
-	if *skill && skillSet && !hasSkill {
-		return fmt.Errorf("%s has no skill; nothing written", *clientName)
-	}
 	path := *settingsPath
 	if path == "" {
 		if path, err = installer.SettingsPath(); err != nil {
@@ -113,10 +106,8 @@ func runInit(args []string, out io.Writer) error {
 		return err
 	}
 	var skillFiles, retiredFiles []skillFile
-	if hasSkill {
-		if skillFiles, retiredFiles, err = readSkills(skillInstaller); err != nil {
-			return err
-		}
+	if skillFiles, retiredFiles, err = readSkills(installer); err != nil {
+		return err
 	}
 	// A rerun keeps the mod the settings record unless a display is asked for,
 	// and runs no claude command for it.
@@ -176,22 +167,20 @@ func runInit(args []string, out io.Writer) error {
 		fmt.Fprintln(out, "It applies to sessions started from now on.")
 	}
 	if *uninstall {
-		if hasSkill {
-			installed := false
-			for _, f := range append(skillFiles, retiredFiles...) {
-				if f.current == nil {
-					continue
-				}
-				installed = true
-				done, err := uninstallSkill(skillInstaller, f, *dryRun)
-				if err != nil {
-					return err
-				}
-				fmt.Fprintln(out, done)
+		installed := false
+		for _, f := range append(skillFiles, retiredFiles...) {
+			if f.current == nil {
+				continue
 			}
-			if !installed {
-				fmt.Fprintln(out, "skills: not installed")
+			installed = true
+			done, err := uninstallSkill(installer, f, *dryRun)
+			if err != nil {
+				return err
 			}
+			fmt.Fprintln(out, done)
+		}
+		if !installed {
+			fmt.Fprintln(out, "skills: not installed")
 		}
 		if !hasMod {
 			return nil
@@ -224,10 +213,8 @@ func runInit(args []string, out io.Writer) error {
 		fmt.Fprintln(out, "mod: installed too, the mod and the status line both draw the pole")
 	}
 
-	if hasSkill {
-		if err := installSkills(out, skillInstaller, skillFiles, retiredFiles, exe, *skill, *dryRun); err != nil {
-			return err
-		}
+	if err := installSkills(out, installer, skillFiles, retiredFiles, exe, *skill, *dryRun); err != nil {
+		return err
 	}
 
 	if setThresholds {
@@ -331,9 +318,21 @@ func installSkills(out io.Writer, s client.SkillInstaller, set, retired []skillF
 	if err != nil {
 		return err
 	}
-	for i, f := range set {
+	var foreign []string
+	for _, f := range set {
 		if f.current != nil && !s.OwnsSkill(f.current) {
+			foreign = append(foreign, f.path)
+		}
+	}
+	for i, f := range set {
+		if slices.Contains(foreign, f.path) {
 			fmt.Fprintf(out, "skill: %s is in the way, a skill not written by Jalon; left as is\n", f.path)
+			continue
+		}
+		// A skill of several files is written whole or not at all: a file of
+		// Jalon's would change someone else's skill.
+		if j := slices.IndexFunc(foreign, func(p string) bool { return sameSkill(p, f.path) }); j >= 0 {
+			fmt.Fprintf(out, "skill: %s not written, %s in its folder is not Jalon's\n", f.path, foreign[j])
 			continue
 		}
 		// The skills are all Jalon's, rebuilt from the binary: no backup, so
@@ -354,6 +353,14 @@ func installSkills(out io.Writer, s client.SkillInstaller, set, retired []skillF
 		fmt.Fprintln(out, done+", replaced by the commands above")
 	}
 	return nil
+}
+
+// sameSkill tells whether two skill files are of one skill: the folder of one
+// holds the other, at any depth.
+func sameSkill(a, b string) bool {
+	da, db := filepath.Dir(a), filepath.Dir(b)
+	sep := string(filepath.Separator)
+	return da == db || strings.HasPrefix(da, db+sep) || strings.HasPrefix(db, da+sep)
 }
 
 // uninstallSkill deletes a skill file that exists when Jalon wrote it, then its

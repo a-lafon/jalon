@@ -2,6 +2,7 @@ package claudecode
 
 import (
 	"bytes"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -50,6 +51,29 @@ func TestSkillsFrontmatter(t *testing.T) {
 		got, _ := Adapter{}.Skills(exe)
 		if !bytes.Contains(got[3].Content, []byte(want)) {
 			t.Errorf("%s: report skill lacks %q", exe, want)
+		}
+	}
+}
+
+// skillNames is the set jalon init installs, in the order it prints them.
+var skillNames = []string{"jalon-resume", "jalon-recap", "jalon-handoff", "jalon-report", "jalon-help"}
+
+// TestSkillsAsWritten pins the files written for Claude Code: testdata holds
+// them as they were before the text was shared with other clients.
+func TestSkillsAsWritten(t *testing.T) {
+	const exe = "/opt/my jalon/jalon"
+	skills, err := Adapter{}.Skills(exe)
+	if err != nil || len(skills) != len(skillNames) {
+		t.Fatalf("skills = %d, %v", len(skills), err)
+	}
+	for i, sk := range skills {
+		want, err := os.ReadFile(filepath.Join("testdata", "skills", skillNames[i], "SKILL.md"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		want = bytes.ReplaceAll(want, []byte("{jalon}"), []byte("'"+exe+"'"))
+		if !bytes.Equal(sk.Content, want) {
+			t.Errorf("%s differs from testdata:\n%s", skillNames[i], sk.Content)
 		}
 	}
 }

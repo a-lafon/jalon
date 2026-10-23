@@ -9,6 +9,7 @@ import (
 
 	"github.com/a-lafon/jalon/internal/client"
 	"github.com/a-lafon/jalon/internal/client/claudecode"
+	"github.com/a-lafon/jalon/internal/client/codex"
 )
 
 // defaultClient is used when --client is not given, so settings written before
@@ -18,6 +19,7 @@ const defaultClient = "claude-code"
 // adapters is the registry: a new client is one package and one line here.
 var adapters = map[string]client.Adapter{
 	claudecode.Adapter{}.Name(): claudecode.Adapter{},
+	codex.Adapter{}.Name():      codex.Adapter{},
 }
 
 // stderr is where a command explains why it printed nothing.
