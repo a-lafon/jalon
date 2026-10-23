@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -501,6 +502,13 @@ func TestResumeIsTheFirstHumanPrompt(t *testing.T) {
 	c, err = NewReader().Read("mem", strings.NewReader(strings.Join(noArg, "\n")))
 	if err != nil || c.Resume == nil || c.Resume.Path != path || c.Resume.Request != 0 {
 		t.Errorf("/jalon-resume alone = %+v, err %v", c.Resume, err)
+	}
+	// Search words name no path either: the handoff jalon handoffs picked is the one.
+	words := slices.Clone(noArg)
+	words[0] = humanText("2026-10-06T08:00:00Z", "<command-message>jalon-resume</command-message>\n<command-name>/jalon-resume</command-name>\n<command-args>keys lookup</command-args>")
+	c, err = NewReader().Read("mem", strings.NewReader(strings.Join(words, "\n")))
+	if err != nil || c.Resume == nil || c.Resume.Path != path {
+		t.Errorf("/jalon-resume with words = %+v, err %v", c.Resume, err)
 	}
 	noArg[2] = printed("No handoff in /home/me/repo/.jalon/handoffs.")
 	c, err = NewReader().Read("mem", strings.NewReader(strings.Join(noArg, "\n")))
