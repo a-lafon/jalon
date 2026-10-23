@@ -481,6 +481,33 @@ func TestResumeIsTheFirstHumanPrompt(t *testing.T) {
 		t.Errorf("skill resume = %+v, err %v", c.Resume, err)
 	}
 
+	// /jalon-resume <path>: the path comes right after <command-args>.
+	skill[0] = humanText("2026-10-06T08:00:00Z", "<command-message>jalon-resume</command-message>\n<command-name>/jalon-resume</command-name>\n<command-args>"+path+"</command-args>")
+	c, err = NewReader().Read("mem", strings.NewReader(strings.Join(skill, "\n")))
+	if err != nil || c.Resume == nil || c.Resume.Path != path {
+		t.Errorf("/jalon-resume = %+v, err %v", c.Resume, err)
+	}
+
+	// /jalon-resume alone: jalon handoffs prints the handoff it picked.
+	printed := func(out string) string {
+		return fmt.Sprintf(`{"type":"user","timestamp":"2026-10-06T08:00:02Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t","content":%q}]}}`, out)
+	}
+	noArg := []string{
+		humanText("2026-10-06T08:00:00Z", "<command-message>jalon-resume</command-message>\n<command-name>/jalon-resume</command-name>"),
+		assistant("2026-10-06T08:00:01Z", "m1", 1, 45000, 0, 5),
+		printed("Folder: /home/me/repo/.jalon/handoffs\nHandoff: 2026-10-09-1402-abcd1234-x.md\nBefore it: none\n"),
+		assistant("2026-10-06T08:00:03Z", "m2", 1, 46000, 0, 5),
+	}
+	c, err = NewReader().Read("mem", strings.NewReader(strings.Join(noArg, "\n")))
+	if err != nil || c.Resume == nil || c.Resume.Path != path || c.Resume.Request != 0 {
+		t.Errorf("/jalon-resume alone = %+v, err %v", c.Resume, err)
+	}
+	noArg[2] = printed("No handoff in /home/me/repo/.jalon/handoffs.")
+	c, err = NewReader().Read("mem", strings.NewReader(strings.Join(noArg, "\n")))
+	if err != nil || c.Resume != nil {
+		t.Errorf("/jalon-resume with no handoff = %+v, err %v, want none", c.Resume, err)
+	}
+
 	// A path quoted in a later prompt is not a resume.
 	later := []string{
 		humanText("2026-10-06T08:00:00Z", "hello"),

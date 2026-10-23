@@ -392,6 +392,9 @@ func (r *Reader) Read(name string, rd io.Reader) (Conversation, error) {
 			}
 		}
 		if err != nil {
+			if conv.Resume != nil && conv.Resume.Path == "" {
+				conv.Resume = nil // a /jalon-resume that picked no handoff
+			}
 			if errors.Is(err, io.EOF) {
 				return conv, nil
 			}
@@ -465,6 +468,9 @@ func (r *Reader) add(conv *Conversation, pending **Turn, lastMessageID *string, 
 				return
 			}
 			block.ToolResult = hasResult
+			if hasResult && conv.Human == 1 && conv.Resume != nil && conv.Resume.Path == "" {
+				conv.Resume.Path = pickedHandoff(m.Content)
+			}
 			if hasText && !hasResult && !e.IsMeta && !e.IsCompactSummary {
 				*pending = &Turn{Time: ts, Block: len(conv.Blocks),
 					Advisable: conv.Human > 0 && (r.Typed == nil || r.Typed(promptText(m.Content)))}
@@ -534,12 +540,44 @@ func isAdvice(e entry) bool {
 // an absolute path. The last path named wins.
 func resumeOf(raw json.RawMessage, at time.Time, turn, request int) *Resume {
 	var res *Resume
-	for _, m := range handoff.Mentions(promptText(raw)) {
+	text := promptText(raw)
+	// The tags of a slash command glue its arguments to <command-args>.
+	for _, m := range handoff.Mentions(commandTag.ReplaceAllString(text, " ")) {
 		if p := m.Path(); p != "" {
 			res = &Resume{Path: p, Time: at, Turn: turn, Request: request}
 		}
 	}
+	if res == nil && strings.Contains(text, "<command-name>/jalon-resume</command-name>") {
+		// No path: jalon handoffs picks the handoff and prints it, see pickedHandoff.
+		res = &Resume{Time: at, Turn: turn, Request: request}
+	}
 	return res
+}
+
+// handoffsOutput is how jalon handoffs prints the handoff it picked.
+var handoffsOutput = regexp.MustCompile(`(?m)^Folder: (/.+)\nHandoff: (.+\.md)$`)
+
+// pickedHandoff is the path of the handoff that jalon handoffs printed in a
+// tool result, "" when it printed none.
+func pickedHandoff(raw json.RawMessage) string {
+	var blocks []struct {
+		Type    string          `json:"type"`
+		Content json.RawMessage `json:"content"`
+	}
+	if json.Unmarshal(raw, &blocks) != nil {
+		return ""
+	}
+	for _, b := range blocks {
+		if b.Type != "tool_result" || len(b.Content) == 0 {
+			continue
+		}
+		if m := handoffsOutput.FindStringSubmatch(promptText(b.Content)); m != nil {
+			if p := filepath.Join(m[1], m[2]); handoff.IsPath(p) {
+				return p
+			}
+		}
+	}
+	return ""
 }
 
 // promptText is the text of a prompt's content: a string, or its text blocks,
