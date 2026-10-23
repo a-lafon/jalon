@@ -50,7 +50,7 @@ jalon ▰▰▱ 160K
 jalon ▰▰▰ 230K · reset advised
 ```
 
-A band fills at each third of `advise_tokens` of growth above the floor, so the pole is full, and `· reset advised` shown, by the hook's rule. It stays full after the first advice. The filled bands are red; set `NO_COLOR` to drop the color. With the advisor disabled, it shows the size alone: `jalon 230K`. It reads the floor from the state file the hook keeps for the session, and writes nothing; until the hook has run in a session, it counts from zero. It prints nothing when the size is unknown, and gives up after 200 ms.
+A band fills at each third of `advise_tokens` of growth above the floor, so the pole is full, and `· reset advised` shown, by the hook's rule. It stays full after the first advice. The filled bands are red; set `NO_COLOR` to drop the color. With the advisor disabled, it shows the size alone: `jalon 230K`. It reads the floor from the state file the hook keeps for the session, and writes nothing; until the hook has kept the floor of a session, at the end of its first turn, the pole stays empty. It prints nothing when the size is unknown, and gives up after 200 ms.
 
 `jalon init` sets it when you have none, and never replaces yours; `jalon init --statusline=false` leaves it out. To add it to an existing status line, pipe the same stdin to both commands in a small script and join their outputs:
 

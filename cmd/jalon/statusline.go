@@ -59,7 +59,13 @@ func runStatusline(ctx context.Context, args []string, stdin io.Reader, out io.W
 			fmt.Fprintf(&buf, "%s\n", cli.TokensK(float64(size)))
 			return buf.Bytes()
 		}
-		filled := poleBands(size-sessionFloor(session), cfg.Context.AdviseTokens)
+		// Until a hook has kept the floor, the growth is unknown: an
+		// empty pole rather than one counted from zero, which a session that
+		// starts heavy, as in Claude Desktop, would fill and then empty.
+		filled := 0
+		if floor := sessionFloor(session); floor > 0 {
+			filled = poleBands(size-floor, cfg.Context.AdviseTokens)
+		}
 		fmt.Fprintf(&buf, "%s %s", pole(filled, os.Getenv("NO_COLOR") == ""), cli.TokensK(float64(size)))
 		if filled == poleLength {
 			buf.WriteString(" · reset advised")

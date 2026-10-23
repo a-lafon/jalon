@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/a-lafon/jalon/internal/advisor"
 )
 
 // The golden files hold the exact bytes the Claude Code hook and status line
@@ -39,9 +41,9 @@ func checkGolden(t *testing.T, name, got string) {
 func TestGoldenStatusline(t *testing.T) {
 	off := "context:\n  enabled: false\n  advise_tokens: 200000\n  advise_step_tokens: 150000\n  stale_after_turns: 5\n"
 	tests := map[string]struct{ cfg, stdin string }{
-		"below":    {"", statusInput("s1", 120_000)},
-		"above":    {"", statusInput("s1", 230_000)},
-		"at":       {"", statusInput("s1", 200_000)},
+		"below":    {"", statusInput("s1", 160_000)},
+		"above":    {"", statusInput("s1", 270_000)},
+		"at":       {"", statusInput("s1", 240_000)},
 		"rounded":  {"", statusInput("s1", 45_600)},
 		"disabled": {off, statusInput("s1", 230_000)},
 		"null":     {"", statusInput("s1", nil)},
@@ -50,7 +52,10 @@ func TestGoldenStatusline(t *testing.T) {
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			useHome(t)
+			// A session that started at 40K.
+			if err := advisor.SetFloor(useHome(t), "s1", 40_000); err != nil {
+				t.Fatal(err)
+			}
 			checkGolden(t, "statusline-"+strings.ReplaceAll(name, " ", "-")+".golden", runStatus(t, configWith(t, tt.cfg), tt.stdin))
 		})
 	}
