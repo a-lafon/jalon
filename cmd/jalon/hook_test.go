@@ -77,22 +77,21 @@ func TestStatuslinePrintsTheContextSize(t *testing.T) {
 		tokens int
 		want   string
 	}{
-		"empty":               {40_000, "jalon ▱▱▱ 40K\n"},
-		"one band":            {95_000, "jalon ▰▱▱ 95K\n"},
-		"two bands":           {140_000, "jalon ▰▰▱ 140K\n"},
-		"above the threshold": {230_000, "jalon ▰▰▰ 230K · reset advised\n"},
-		"at the threshold":    {200_000, "jalon ▰▰▰ 200K · reset advised\n"},
+		"empty":               {80_000, "jalon ▱▱▱ 80K\n"},
+		"one band":            {135_000, "jalon ▰▱▱ 135K\n"},
+		"two bands":           {180_000, "jalon ▰▰▱ 180K\n"},
+		"above the threshold": {270_000, "jalon ▰▰▰ 270K · reset advised\n"},
+		"at the threshold":    {240_000, "jalon ▰▰▰ 240K · reset advised\n"},
 		"rounds to thousands": {45_600, "jalon ▱▱▱ 46K\n"},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			home := useHome(t)
+			// A session that started at 40K.
+			if err := advisor.SetFloor(useHome(t), "s1", 40_000); err != nil {
+				t.Fatal(err)
+			}
 			if got := runStatus(t, configWith(t, ""), statusInput("s1", tt.tokens)); got != tt.want {
 				t.Errorf("output = %q, want %q", got, tt.want)
-			}
-			// It is a display only: it writes nothing.
-			if _, err := os.Stat(filepath.Join(filepath.Dir(home), "sessions")); err == nil {
-				t.Error("the status line wrote a state folder")
 			}
 		})
 	}
@@ -109,10 +108,10 @@ func TestStatuslineCountsTheGrowthAboveTheFloorOfTheSession(t *testing.T) {
 		"heavy start":                {"s1", 212_000, 230_000, "jalon ▱▱▱ 230K\n"},
 		"heavy start, grown":         {"s1", 212_000, 362_000, "jalon ▰▰▰ 362K · reset advised\n"},
 		"heavy start, on the way":    {"s1", 212_000, 330_000, "jalon ▰▰▱ 330K\n"},
-		"state file without a floor": {"s1", 0, 230_000, "jalon ▰▰▰ 230K · reset advised\n"},
-		"no state file":              {"s1", -1, 230_000, "jalon ▰▰▰ 230K · reset advised\n"},
-		"no session ID":              {"", 212_000, 230_000, "jalon ▰▰▰ 230K · reset advised\n"},
-		"unsafe session ID":          {"../x", 212_000, 230_000, "jalon ▰▰▰ 230K · reset advised\n"},
+		"state file without a floor": {"s1", 0, 230_000, "jalon ▱▱▱ 230K\n"},
+		"no state file":              {"s1", -1, 230_000, "jalon ▱▱▱ 230K\n"},
+		"no session ID":              {"", 66_000, 230_000, "jalon ▱▱▱ 230K\n"},
+		"unsafe session ID":          {"../x", 66_000, 230_000, "jalon ▱▱▱ 230K\n"},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -121,7 +120,7 @@ func TestStatuslineCountsTheGrowthAboveTheFloorOfTheSession(t *testing.T) {
 			if err := os.MkdirAll(dir, 0o700); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.WriteFile(filepath.Join(filepath.Dir(dir), "x.json"), []byte(`{"floor":212000}`), 0o600); err != nil {
+			if err := os.WriteFile(filepath.Join(filepath.Dir(dir), "x.json"), []byte(`{"floor":1000}`), 0o600); err != nil {
 				t.Fatal(err)
 			}
 			if tt.floor >= 0 {
@@ -192,17 +191,19 @@ func TestPoleBandsFillAtEachThirdOfTheThreshold(t *testing.T) {
 }
 
 func TestStatuslineColorsTheFilledBands(t *testing.T) {
-	useHome(t)
+	if err := advisor.SetFloor(useHome(t), "s1", 40_000); err != nil {
+		t.Fatal(err)
+	}
 	cfg := configWith(t, "")
 	tests := map[string]struct {
 		noColor string
 		tokens  int
 		want    string
 	}{
-		"one band":     {"", 95_000, "jalon \x1b[38;2;232;56;27m▰\x1b[0m▱▱ 95K\n"},
-		"full":         {"", 230_000, "jalon \x1b[38;2;232;56;27m▰▰▰\x1b[0m 230K · reset advised\n"},
-		"empty":        {"", 40_000, "jalon ▱▱▱ 40K\n"},
-		"NO_COLOR set": {"1", 95_000, "jalon ▰▱▱ 95K\n"},
+		"one band":     {"", 135_000, "jalon \x1b[38;2;232;56;27m▰\x1b[0m▱▱ 135K\n"},
+		"full":         {"", 270_000, "jalon \x1b[38;2;232;56;27m▰▰▰\x1b[0m 270K · reset advised\n"},
+		"empty":        {"", 80_000, "jalon ▱▱▱ 80K\n"},
+		"NO_COLOR set": {"1", 135_000, "jalon ▰▱▱ 135K\n"},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
