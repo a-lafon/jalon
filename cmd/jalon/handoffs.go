@@ -56,6 +56,7 @@ func runHandoffs(args []string, out io.Writer) error {
 		slices.Reverse(prev)
 		before = strings.Join(prev, ", ")
 	}
+	// transcript.pickedHandoff reads these two first lines back from the transcript.
 	fmt.Fprintf(out, "Folder: %s\nHandoff: %s\nBefore it: %s\n", folder, picked, before)
 	return printHandoff(out, folder, picked)
 }

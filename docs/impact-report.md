@@ -33,7 +33,7 @@ After the summary, the report has an Impact section, read from the transcripts a
 
 It prints the total and, apart, the part from resets that followed advice, with its share of the same base (read plus not re-read). The estimate assumes the conversation would have gone on the same way, counts input, cache read and cache write together, and is never a cost or a quota.
 
-A handoff resume is linked to the conversation that wrote the handoff, or else to the one its `Session:` line names. The report cannot see a `/clear` or a new session started without a handoff: nothing links them to the conversation they replace. Nor does it link a resume with `/jalon-resume` and no path, whose prompt holds none. A handoff asked with `/jalon-handoff` is not counted as an advice, so the reset that follows shows as one with no advice.
+A handoff resume is linked to the conversation that wrote the handoff, or else to the one its `Session:` line names. The report cannot see a `/clear` or a new session started without a handoff: nothing links them to the conversation they replace. A resume with `/jalon-resume` is linked too: by the path it names, or else by the handoff `jalon handoffs` printed for it. A handoff asked with `/jalon-handoff` is not counted as an advice, so the reset that follows shows as one with no advice.
 
 ## Returns after a pause
 
