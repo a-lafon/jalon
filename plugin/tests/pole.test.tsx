@@ -70,6 +70,32 @@ for (const surface of ['terminal', 'desktop'] as const) {
   })
 }
 
+// The text of each drawn node that has a color or dimColor prop, in order.
+function colored(node: unknown, out: string[] = []): string[] {
+  if (Array.isArray(node)) {
+    node.forEach(n => colored(n, out))
+  } else if (node !== null && typeof node === 'object') {
+    const { props, children } = node as { props?: { color?: string; dimColor?: boolean; children?: unknown }; children?: unknown }
+    if (props?.color !== undefined || props?.dimColor === true) {
+      out.push(`${props.color ?? 'dim'}:${text(children ?? props.children ?? '')}`)
+    } else {
+      colored(children ?? props?.children, out)
+    }
+  }
+  return out
+}
+
+test('desktop: draws every band with the same glyph, filled ones in red', async ($, on) => {
+  session(on, ['desktop'])
+  on('process.run', () => ran('jalon ▰▱▱ 80K\n'))
+
+  await $.session.measure({ context: { tokens: 80_000, window: 1_000_000 }, rateLimits: [], changed: ['context'] })
+
+  const drawn = await (await $.ui.mount({ plugin: 'jalon', surface: 'desktop', component: 'AbovePrompt', props })).drawn()
+  expect(text(drawn)).toBe('jalon ▰▰▰ 80K')
+  expect(colored(drawn).slice(1, 3)).toEqual(['#E8381B:▰', 'dim:▰▰'])
+})
+
 test('uses the configured binary', { options: { binary: '/opt/bin/jalon' } }, async ($, on) => {
   session(on)
   const argv: (string | undefined)[] = []
