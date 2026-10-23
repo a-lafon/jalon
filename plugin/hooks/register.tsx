@@ -32,11 +32,13 @@ export const register: Register = (on, options) => {
       return next(e)
     }
     const { Box, Text } = $.ui.resolve(e)
+    // One glyph for every band, only its color says it is filled: Claude
+    // Desktop's font draws ▰ and ▱ at different sizes.
     return (
       <Box>
         <Text dimColor>jalon </Text>
         <Text color={poleRed}>{'▰'.repeat(pole.filled)}</Text>
-        <Text dimColor>{'▱'.repeat(poleLength - pole.filled)}</Text>
+        <Text dimColor>{'▰'.repeat(poleLength - pole.filled)}</Text>
         <Text dimColor> {pole.size}</Text>
         {pole.isAdvised ? <Text color={poleRed}> · reset advised</Text> : null}
       </Box>

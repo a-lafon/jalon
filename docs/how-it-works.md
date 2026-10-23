@@ -62,7 +62,7 @@ printf '%s  %s' "$(printf '%s' "$input" | ~/bin/my-status.sh)" "$(printf '%s' "$
 
 ## The pole above the prompt
 
-An alternative to the status line: a Claude Code mod, in `plugin/`, draws the same pole on a row of its own above the prompt, with `· reset advised` in red. It also shows in the Code tab of Claude Desktop; the VS Code chat panel does not draw mods, so it shows nothing there, and does not run the binary. Install it in place of the status line:
+An alternative to the status line: a Claude Code mod, in `plugin/`, draws the same pole on a row of its own above the prompt, with `· reset advised` in red. It draws every band as `▰`, the filled ones red and the others dimmed, since Claude Desktop's font draws `▰` and `▱` at different sizes. It also shows in the Code tab of Claude Desktop; the VS Code chat panel does not draw mods, so it shows nothing there, and does not run the binary. Install it in place of the status line:
 
 ```
 jalon init --mod

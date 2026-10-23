@@ -1,6 +1,6 @@
 {
   "name": "jalon",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Draws Jalon's pole above the prompt: three bands that fill as the context grows, full when a reset is advised",
   "author": { "name": "Arnaud Lafon" },
   "userConfig": {
