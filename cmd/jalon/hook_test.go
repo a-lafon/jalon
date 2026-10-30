@@ -229,13 +229,28 @@ func TestStatuslineIsSilentOnAnyFailure(t *testing.T) {
 		"zero count":                  {cfg, statusInput("s1", 0)},
 		"input is not JSON":           {cfg, `not json`},
 		"empty input":                 {cfg, ``},
-		"config does not parse":       {configWith(t, "listen: [\n"), statusInput("s1", 5000)},
-		"config has an unknown field": {configWith(t, "colour: blue\n"), statusInput("s1", 5000)},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			if got := runStatus(t, tt.cfg, tt.stdin); got != "" {
 				t.Errorf("output = %q, want nothing", got)
+			}
+		})
+	}
+}
+
+// A config that does not load is the one failure the status line says out loud:
+// it is permanent until the file is edited, and silence there reads as a Jalon
+// that is not installed.
+func TestStatuslineNamesABadConfig(t *testing.T) {
+	useHome(t)
+	for name, cfg := range map[string]string{
+		"does not parse":       "listen: [\n",
+		"has an unknown field": "colour: blue\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := runStatus(t, configWith(t, cfg), statusInput("s1", 5000)); got != "jalon: bad config\n" {
+				t.Errorf("output = %q, want the bad config line", got)
 			}
 		})
 	}

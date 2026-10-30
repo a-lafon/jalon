@@ -26,7 +26,8 @@ var statuslineTimeout = 200 * time.Millisecond
 // prompt hook reads the size from the transcript itself, so this is only a
 // display, for clients that run a status line. It prints nothing when
 // the size is missing or on any error, so a status line it is appended to keeps
-// working.
+// working; the one exception is a config that does not load, which is named,
+// since it stops the hooks too and lasts until the file is edited.
 func runStatusline(ctx context.Context, args []string, stdin io.Reader, out io.Writer) error {
 	flags := flag.NewFlagSet("statusline", flag.ContinueOnError)
 	configPath := flags.String("config", config.DefaultPath(), "path to the config file")
@@ -49,9 +50,11 @@ func runStatusline(ctx context.Context, args []string, stdin io.Reader, out io.W
 	}
 
 	b := bounded(ctx, statuslineTimeout, func() []byte {
-		cfg, err := cli.LoadConfig(flags, *configPath)
-		if err != nil {
-			return nil
+		// The status line is the one place the user looks at every turn, so a
+		// config that does not load is said there and not only on stderr.
+		cfg, loaded := loadConfig(flags, *configPath)
+		if !loaded {
+			return []byte("jalon: bad config\n")
 		}
 		var buf bytes.Buffer
 		buf.WriteString("jalon ")
