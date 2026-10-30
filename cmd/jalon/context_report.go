@@ -60,6 +60,7 @@ func runContextReport(ctx context.Context, args []string, out io.Writer) error {
 		StaleAfterTurns: cfg.Context.StaleAfterTurns,
 		StopHook:        *stopHook,
 	}
+	params.InForce = params.Advisor == hookThresholds()
 
 	if _, err := os.Stat(*transcripts); err != nil {
 		return fmt.Errorf("cannot read the transcripts directory %s: %w", *transcripts, unwrapPathError(err))
@@ -104,6 +105,17 @@ func runContextReport(ctx context.Context, args []string, out io.Writer) error {
 		printSubagents(out, ctxreport.SubagentsBetween(convs, params.Advisor.AdviseTokens, from, to), params.Advisor.AdviseTokens)
 	}
 	return nil
+}
+
+// hookThresholds are the thresholds the hooks run with: those of the installed
+// config file, the defaults when there is none. A report run at other values
+// replays a hook that never ran, so where the real one advised does not hold.
+func hookThresholds() advisor.Config {
+	cfg, err := config.Load(config.DefaultPath())
+	if err != nil {
+		cfg = config.Default()
+	}
+	return advisor.Config{AdviseTokens: cfg.Context.AdviseTokens, StepTokens: cfg.Context.AdviseStepTokens}
 }
 
 // markVersions names, for each advice given, the Jalon version that gave it.

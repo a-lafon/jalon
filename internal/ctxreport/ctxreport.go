@@ -19,6 +19,9 @@ type Params struct {
 	StaleAfterTurns int
 	// StopHook replays the stop hook's advice at the end of a turn too.
 	StopHook bool
+	// InForce is set when Advisor holds the thresholds the hooks ran with: only
+	// then does where an advice was given say where the replayed one lands.
+	InForce bool
 }
 
 // Advice is an advice the advisor would have given at a user turn, at its
@@ -266,7 +269,7 @@ func simulateOne(res *Result, c transcript.Conversation, cuts []cut, p Params) {
 		// A compaction inside the turn comes first, up to where the hook acts: a
 		// later one belongs to the next turn. The hook reads the request before
 		// the last: the transcript does not hold the last one yet.
-		last := stopAt(c, t.Request, end)
+		last := stopAt(c, t.Request, end, p.InForce)
 		applyCompactions(i+1, last)
 		if last-1 >= segReq {
 			blocks := sort.Search(len(c.Blocks), func(k int) bool { return c.Blocks[k].Request > last })
@@ -280,10 +283,15 @@ func simulateOne(res *Result, c transcript.Conversation, cuts []cut, p Params) {
 // stopAt is the request the stop hook acts on in the prompt span [first, end):
 // the span's last request, or, when the hook advised inside the span, the one
 // it advised at. The hook blocks once, so the model went on under the same
-// prompt and the span grew past the size the hook saw.
-func stopAt(c transcript.Conversation, first, end int) int {
+// prompt and the span grew past the size the hook saw. Where it advised holds
+// only with inForce, the thresholds it ran with: at others the replayed
+// advisor decides for itself whether that size advises at all.
+func stopAt(c transcript.Conversation, first, end int, inForce bool) int {
+	if !inForce {
+		return end - 1
+	}
 	for _, a := range c.Advices {
-		if a.Request-1 > first && a.Request-1 < end-1 {
+		if a.Request-1 >= first && a.Request-1 < end-1 {
 			return a.Request - 1
 		}
 	}
