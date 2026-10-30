@@ -373,7 +373,7 @@ func TestHookAdvisesWhenTheThresholdIsCrossed(t *testing.T) {
 	ctxt := out.HookSpecificOutput.AdditionalContext
 	if out.HookSpecificOutput.HookEventName != "UserPromptSubmit" ||
 		!strings.Contains(ctxt, "holds about 212K tokens of context") ||
-		!regexp.MustCompile(`Write `+regexp.QuoteMeta(repo)+`/\.jalon/handoffs/2026-10-12/0900-[0-9a-z]{8}-<short-slug>\.md`).MatchString(ctxt) ||
+		!regexp.MustCompile(`Give the section first, then write\s+`+regexp.QuoteMeta(repo)+`/\.jalon/handoffs/2026-10-12/0900-[0-9a-z]{8}-<short-slug>\.md`).MatchString(ctxt) ||
 		!regexp.MustCompile(`then @`+regexp.QuoteMeta(repo)+`/\.jalon/handoffs/2026-10-12/0900-[0-9a-z]{8}-<short-slug>\.md`).MatchString(ctxt) ||
 		!strings.Contains(ctxt, `Its first line is "Session: s1".`) ||
 		!strings.Contains(ctxt, "/compact <what to keep;") ||
@@ -1280,8 +1280,8 @@ func TestStopHookCrossedDuringTheTurn(t *testing.T) {
 	out := parseStop(t, runStop(t, cfg, stopInput("s1", "p2", repo, "Done.", false)))
 	if !strings.HasPrefix(out.Reason, "Jalon: context at 296K tokens.") ||
 		!strings.Contains(out.Reason, "do not repeat it") ||
-		!strings.Contains(out.Reason, "Add, as your last message, a short section written as a Markdown blockquote") ||
-		!regexp.MustCompile(`Write `+regexp.QuoteMeta(repo)+`/\.jalon/handoffs/2026-10-12/0900-[0-9a-z]{8}-<short-slug>\.md`).MatchString(out.Reason) ||
+		!strings.Contains(out.Reason, "Give, as your next message and before any file you write, a short section written as a Markdown blockquote") ||
+		!regexp.MustCompile(`Give the section first, then write\s+`+regexp.QuoteMeta(repo)+`/\.jalon/handoffs/2026-10-12/0900-[0-9a-z]{8}-<short-slug>\.md`).MatchString(out.Reason) ||
 		strings.Contains(out.Reason, "{") {
 		t.Errorf("reason = %q", out.Reason)
 	}
@@ -1303,6 +1303,25 @@ func TestStopHookCrossedDuringTheTurn(t *testing.T) {
 	appendTranscript(t, "s1", typedPrompt("p3"), assistantLine(301_000))
 	if got := runPrompt(t, cfg, promptInput("s1", "p3", repo)); got != "" {
 		t.Errorf("next prompt output = %q, want nothing", got)
+	}
+}
+
+// The section lands in seconds, the handoff file takes about two minutes: a
+// user who types during the write must already have seen the advice.
+func TestStopHookAsksForTheSectionBeforeTheFile(t *testing.T) {
+	useHome(t)
+	cfg := configWith(t, "context:\n  advise_tokens: 200000\n  advise_step_tokens: 150000\n")
+	repo := gitRepo(t)
+	appendTranscript(t, "s1", typedPrompt("p1"), assistantLine(67_000), assistantLine(150_000))
+	if got := runPrompt(t, cfg, promptInput("s1", "p2", repo)); got != "" {
+		t.Fatalf("prompt hook output = %q, want nothing", got)
+	}
+	appendTranscript(t, "s1", typedPrompt("p2"), assistantLine(296_000))
+	out := parseStop(t, runStop(t, cfg, stopInput("s1", "p2", repo, "Done.", false)))
+	section := strings.Index(out.Reason, "as your next message and before any file you write")
+	file := strings.Index(out.Reason, "then write")
+	if section < 0 || file < 0 || section > file {
+		t.Errorf("reason does not ask for the section before the file: %q", out.Reason)
 	}
 }
 
