@@ -535,7 +535,7 @@ func TestHookInstructionTiesTheHandoffToItsScope(t *testing.T) {
 	path := writeHandoff(t, repo, "2026-10-09/1358-r4sefxw4-advisor.md")
 	ctxt := adviseAt(t, cfg, "s2", repo, "@"+path+" resume from it", 212_000, hookNow)
 	for _, want := range []string{
-		"the branch, worktree and base commit read from the repository now, never copied from the handoff it follows",
+		"when the work sits in a repository, the branch, worktree and base commit read from it now, never copied from the handoff it follows",
 		"each naming the branch, commit or directory it was verified on",
 		"one inherited from the handoff it follows is repeated only after checking it still holds",
 		"every item the handoff it follows left open and this one does not carry, one line each: done, abandoned or moot, and why",
