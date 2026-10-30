@@ -39,6 +39,8 @@ func TestHumanDetection(t *testing.T) {
 		"idle notice":               {"[Cross-session idle notice] jalon-a1 is idle", false},
 		"delivery notice":           {"[Cross-session delivery notice] refused", false},
 		"task notification":         {"<task-notification>\n<task-id>b1</task-id>", false},
+		"subagent hand-back":        {"<agent-message from=\"general-purpose\">\ndone\n</agent-message>", false},
+		"a prompt about an agent":   {"the <agent-message> tag is the one to filter", true},
 		"quoted later in the text":  {"what does \"Another Claude session sent a message:\" mean?", true},
 		"similar but not the same":  {"[Cross-sessions] are cool", true},
 	}
