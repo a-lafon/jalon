@@ -268,6 +268,54 @@ func TestCrossedMidTurn(t *testing.T) {
 	}
 }
 
+// spanConv is a conversation whose second prompt is answered by one request
+// per size: a prompt span the stop hook acts on.
+func spanConv(floor int, sizes ...int) transcript.Conversation {
+	c := conv("a", 100, floor)
+	for i, size := range sizes {
+		at := t0.Add(time.Duration(i+1) * time.Minute)
+		if i == 0 {
+			c.Turns = append(c.Turns, transcript.Turn{Time: at, PromptTokens: size, Block: len(c.Blocks), Request: len(c.Requests), Advisable: true, Human: true})
+		}
+		c.Requests = append(c.Requests, transcript.Request{Time: at, Turn: 1, PromptTokens: size})
+		c.Blocks = append(c.Blocks, transcript.Block{Turn: 1, Bytes: 10, Request: len(c.Requests)})
+	}
+	return c
+}
+
+func TestStopHookAdviceIsPlacedWhereItFired(t *testing.T) {
+	stop := Params{Advisor: params.Advisor, StaleAfterTurns: params.StaleAfterTurns, StopHook: true}
+	// The hook advised at the request of 205K, blocked once, and the model went
+	// on under the same prompt to 260K. Two requests later the transcript holds
+	// the advice, as the reader records it.
+	c := spanConv(50000, 100000, 190000, 205000, 240000, 260000)
+	c.Advices = []transcript.Advice{{UUID: "s", Time: t0.Add(4 * time.Minute), Turn: 1, Request: 5, Rendered: true}}
+	res := Simulate([]transcript.Conversation{c}, stop)
+	if len(res.Advices) != 1 || !res.Advices[0].AtStop || res.Advices[0].PromptTokens != 205000 {
+		t.Errorf("advices = %+v, want one at the stop, at 205K", res.Advices)
+	}
+
+	// With no advice in the span, the hook is evaluated at its end, as before.
+	c.Advices = nil
+	res = Simulate([]transcript.Conversation{c}, stop)
+	if len(res.Advices) != 1 || !res.Advices[0].AtStop || res.Advices[0].PromptTokens != 240000 {
+		t.Errorf("advices = %+v, want one at the end of the span, at 240K", res.Advices)
+	}
+}
+
+func TestIgnoredIsAnAdviceTheConversationOutlived(t *testing.T) {
+	// The advisor fires at turn 2 and the user goes on without resetting.
+	res := Simulate([]transcript.Conversation{conv("a", 100, 50000, 120000, 210000, 215000)}, params)
+	if len(res.Unfollowed) != 1 || !res.Unfollowed[0].Outlived {
+		t.Errorf("unfollowed = %+v, want one ignored advice", res.Unfollowed)
+	}
+	// The same advice at the last turn: the conversation ended at it.
+	res = Simulate([]transcript.Conversation{conv("a", 100, 50000, 120000, 210000)}, params)
+	if len(res.Unfollowed) != 1 || res.Unfollowed[0].Outlived {
+		t.Errorf("unfollowed = %+v, want an advice the conversation ended at", res.Unfollowed)
+	}
+}
+
 func TestResultsAreSortedByTime(t *testing.T) {
 	shift := func(c transcript.Conversation, d time.Duration) transcript.Conversation {
 		for i := range c.Turns {

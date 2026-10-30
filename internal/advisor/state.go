@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"time"
 )
@@ -35,6 +36,9 @@ type Session struct {
 	// by them.
 	Prompt        string `json:"prompt,omitempty"`
 	AdvisedPrompt string `json:"advised_prompt,omitempty"`
+	// Version is the Jalon version that gave the last advice, "" when the build
+	// does not say which it is.
+	Version string `json:"version,omitempty"`
 	// Typed is true once the transcript has shown a prompt typed by a person in
 	// the session: only such a session is advised, not one only a program drove.
 	// It is kept, since a long turn can push that prompt out of the part read.
@@ -94,8 +98,22 @@ func Record(dir, id string, size int, now time.Time, prompt string, typed bool) 
 	return write(dir, id, s)
 }
 
-// MarkAdvised stores size as the last advised size of a session, and prompt as
-// the prompt it was advised at, keeping the rest of its state.
+// Version is the build that gives an advice, recorded with it so the report
+// can tell which version advised. It is read from the binary's build
+// information, the only source a hook has, and is "" for a build that carries
+// none, such as a test binary.
+var Version = buildVersion()
+
+func buildVersion() string {
+	info, ok := debug.ReadBuildInfo()
+	if !ok || info.Main.Version == "(devel)" {
+		return ""
+	}
+	return info.Main.Version
+}
+
+// MarkAdvised stores size as the last advised size of a session, the prompt it
+// was advised at and the version that gave it, keeping the rest of its state.
 func MarkAdvised(dir, id string, size int, now time.Time, prompt string) error {
 	if !SafeSessionID(id) {
 		return errors.New("unsafe session id")
@@ -104,7 +122,7 @@ func MarkAdvised(dir, id string, size int, now time.Time, prompt string) error {
 	if s.Recorded.IsZero() {
 		s.Size, s.Recorded = size, now
 	}
-	s.LastAdvised, s.AdvisedPrompt = size, prompt
+	s.LastAdvised, s.AdvisedPrompt, s.Version = size, prompt, Version
 	return write(dir, id, s)
 }
 

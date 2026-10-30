@@ -79,6 +79,7 @@ func runContextReport(ctx context.Context, args []string, out io.Writer) error {
 	printCoverage(out, reader.Coverage, *transcripts)
 	sim := ctxreport.Simulate(convs, params)
 	impact := ctxreport.Impacts(convs)
+	markVersions(impact, convs)
 	returns := ctxreport.ColdReturns(convs, params.Advisor.AdviseTokens)
 	title := "Summary"
 	if len(cuts) > 0 {
@@ -103,6 +104,25 @@ func runContextReport(ctx context.Context, args []string, out io.Writer) error {
 		printSubagents(out, ctxreport.SubagentsBetween(convs, params.Advisor.AdviseTokens, from, to), params.Advisor.AdviseTokens)
 	}
 	return nil
+}
+
+// markVersions names, for each advice given, the Jalon version that gave it.
+// The transcript does not hold it: it is read from the session state, which is
+// swept after a week, so an older advice stays unknown.
+func markVersions(im ctxreport.Impact, convs []transcript.Conversation) {
+	dir, err := sessionsDir()
+	if err != nil {
+		return
+	}
+	byFile := make(map[string]string, len(convs))
+	for _, c := range convs {
+		if st, ok := advisor.Load(dir, c.SessionID); ok {
+			byFile[c.File] = st.Version
+		}
+	}
+	for i := range im.Advices {
+		im.Advices[i].Version = byFile[im.Advices[i].File]
+	}
 }
 
 func defaultTranscripts() string {
@@ -143,18 +163,26 @@ func printImpact(out io.Writer, im ctxreport.Impact) {
 	fmt.Fprintln(out, "\nImpact (transcripts; estimates)")
 	followed := map[string]int{}
 	var leads []float64
+	missed, versions := 0, map[string]int{}
 	for _, a := range im.Advices {
 		if a.FollowedBy != "" {
 			followed[a.FollowedBy]++
 			leads = append(leads, float64(a.Lead))
 		}
+		if !a.Rendered {
+			missed++
+		}
+		versions[a.Version]++
 	}
 	fmt.Fprintf(out, "  advice given %d: followed by a compaction %d, by a handoff %d, nothing seen %d",
 		len(im.Advices), followed[ctxreport.KindCompaction], followed[ctxreport.KindHandoff], len(im.Advices)-len(leads))
 	if len(leads) > 0 {
 		fmt.Fprintf(out, "; lead p50 %s", cli.Plural(int(ctxreport.Distribution(leads).P50), "turn"))
 	}
-	fmt.Fprintln(out)
+	fmt.Fprintf(out, "; never shown %d (no reply gave the Jalon section before the next advice: no reset is linked to them)\n", missed)
+	if len(im.Advices) > 0 {
+		fmt.Fprintf(out, "  given by %s\n", versionCounts(versions))
+	}
 
 	advised := 0
 	var inN, cacheRead int64
@@ -168,7 +196,7 @@ func printImpact(out io.Writer, im ctxreport.Impact) {
 	fmt.Fprintf(out, "  resets %d (%d advised, %d unprompted); handoff resumes not linked %d\n",
 		len(im.Resets), advised, len(im.Resets)-advised, len(im.NotLinked))
 	notReRead, advisedNotReRead, base := notReReadSums(im)
-	fmt.Fprintf(out, "  prompt tokens read %s; not re-read thanks to resets about %s prompt tokens (%s of what would have been read)\n",
+	fmt.Fprintf(out, "  prompt tokens read %s (every request of this period, in the conversations you typed in); not re-read thanks to resets about %s prompt tokens (%s of what would have been read)\n",
 		tokensM(im.PromptRead), tokensM(notReRead), cli.PercentOf(shareOf(notReRead, base)))
 	fmt.Fprintf(out, "    of which after advice about %s (%s of the same base)\n", tokensM(advisedNotReRead), cli.PercentOf(shareOf(advisedNotReRead, base)))
 	fmt.Fprint(out, "    estimate: assumes the conversations would have gone on the same way; all cache types counted together")
@@ -195,6 +223,34 @@ func printImpact(out io.Writer, im ctxreport.Impact) {
 			cli.TokensK(float64(r.Before)), after, r.Requests, tokensM(r.NotReRead), advice)
 	}
 	w.Flush()
+}
+
+// versionCounts names the Jalon version of each advice, as "version 0.5.0 3,
+// unknown 2", the most advices first. Unknown is an advice whose session state
+// holds no version: one given before Jalon recorded it, or a state swept since.
+func versionCounts(counts map[string]int) string {
+	names := make([]string, 0, len(counts))
+	for v := range counts {
+		names = append(names, v)
+	}
+	sort.Slice(names, func(i, j int) bool {
+		switch {
+		case counts[names[i]] != counts[names[j]]:
+			return counts[names[i]] > counts[names[j]]
+		case (names[i] == "") != (names[j] == ""):
+			return names[j] == "" // unknown last
+		}
+		return names[i] < names[j]
+	})
+	var parts []string
+	for _, v := range names {
+		name := "version " + v
+		if v == "" {
+			name = "unknown"
+		}
+		parts = append(parts, fmt.Sprintf("%s %d", name, counts[v]))
+	}
+	return strings.Join(parts, ", ")
 }
 
 // printReturns prints the prompts typed after a pause that found the cache
@@ -304,6 +360,7 @@ func printTranscriptPeriod(out io.Writer, r ctxreport.Result, p ctxreport.Params
 			fmt.Fprintf(w, "  %s\t%s\t%s\t%s\t%s\t%s\n", c.Time.Local().Format("2006-01-02 15:04"), c.Kind, cli.TokensK(float64(c.PreTokens)), lead, beyond, advice)
 		}
 		w.Flush()
+		fmt.Fprintln(out, "  A lead of 0 turns is the normal case: the model writes the handoff in the turn the advice lands.")
 		if given {
 			fmt.Fprintln(out, "  Resets marked \"yes\" followed an advice the hook gave, at the threshold in force then: they cannot judge a higher threshold.")
 		}
@@ -324,9 +381,15 @@ func printTranscriptPeriod(out io.Writer, r ctxreport.Result, p ctxreport.Params
 		atStop = fmt.Sprintf("%d of %d", n, len(r.Advices))
 	}
 	fmt.Fprintf(out, "\nSimulated advices at the end of a turn (stop hook): %s\n", atStop)
-	fmt.Fprintf(out, "Advices no reset followed: %d of %d\n", len(r.Unfollowed), len(r.Advices))
+	ignored, ended := unfollowedSplit(r.Unfollowed)
+	fmt.Fprintf(out, "Advices no reset followed: %d of %d, of which %d ignored (the conversation went on) and %d at the end of a conversation\n",
+		len(r.Unfollowed), len(r.Advices), ignored, ended)
 	for _, a := range r.Unfollowed {
-		fmt.Fprintf(out, "  %s  %s tokens\n", a.Time.Local().Format("2006-01-02 15:04"), cli.TokensK(float64(a.PromptTokens)))
+		kind := "conversation ended"
+		if a.Outlived {
+			kind = "ignored"
+		}
+		fmt.Fprintf(out, "  %s  %s tokens  %s\n", a.Time.Local().Format("2006-01-02 15:04"), cli.TokensK(float64(a.PromptTokens)), kind)
 	}
 
 	fmt.Fprintln(out, "\nStale share at advised points (tool results older than N turns or requests, share of context bytes)")
@@ -398,11 +461,11 @@ func printStartingSize(out io.Writer, floors []ctxreport.Floor) {
 		cli.PercentOf(shareOf(base, read)), tokensM(base), tokensM(read))
 
 	lines := projectLines(floors)
-	fmt.Fprintln(out, "  by project, largest p50 first (starting size share of the prompt tokens read):")
+	fmt.Fprintln(out, "  by project, most prompt tokens read as starting size first (share of the prompt tokens its conversations read):")
 	w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
 	for _, l := range lines[:min(len(lines), maxProjects)] {
-		fmt.Fprintf(w, "    %s\t%s\tp50 %s\tmax %s\t%s\n", l.name, cli.Plural(l.d.N, "conversation"),
-			cli.TokensK(l.d.P50), cli.TokensK(l.d.Max), cli.PercentOf(l.share))
+		fmt.Fprintf(w, "    %s\t%s\t%s as starting size\tp50 %s\tmax %s\t%s\n", l.name, cli.Plural(l.d.N, "conversation"),
+			tokensKM(float64(l.base)), cli.TokensK(l.d.P50), cli.TokensK(l.d.Max), cli.PercentOf(l.share))
 	}
 	w.Flush()
 	if more := len(lines) - maxProjects; more > 0 {
@@ -413,8 +476,11 @@ func printStartingSize(out io.Writer, floors []ctxreport.Floor) {
 // projectLine is a project's starting sizes, and the share of the prompt
 // tokens its conversations read that was their starting size.
 type projectLine struct {
-	name  string
-	d     ctxreport.Dist
+	name string
+	d    ctxreport.Dist
+	// base is the prompt tokens its conversations read that was their starting
+	// size, and share that part of what they read.
+	base  int64
 	share float64
 }
 
@@ -458,11 +524,13 @@ func projectLines(floors []ctxreport.Floor) []projectLine {
 	lines := make([]projectLine, len(projects))
 	for i, p := range projects {
 		d, base, read := floorStats(p.floors)
-		lines[i] = projectLine{p.name, d, shareOf(base, read)}
+		lines[i] = projectLine{p.name, d, base, shareOf(base, read)}
 	}
+	// By the tokens the starting size accounts for, not by its median: one heavy
+	// conversation is not worth trimming before a project holding many.
 	sort.Slice(lines, func(i, j int) bool {
-		if lines[i].d.P50 != lines[j].d.P50 {
-			return lines[i].d.P50 > lines[j].d.P50
+		if lines[i].base != lines[j].base {
+			return lines[i].base > lines[j].base
 		}
 		return lines[i].name < lines[j].name
 	})

@@ -1,7 +1,7 @@
 
 Impact (transcripts; estimates)
-  advice given 0: followed by a compaction 0, by a handoff 0, nothing seen 0
+  advice given 0: followed by a compaction 0, by a handoff 0, nothing seen 0; never shown 0 (no reply gave the Jalon section before the next advice: no reset is linked to them)
   resets 0 (0 advised, 0 unprompted); handoff resumes not linked 0
-  prompt tokens read 0.0M; not re-read thanks to resets about 0.0M prompt tokens (0% of what would have been read)
+  prompt tokens read 0.0M (every request of this period, in the conversations you typed in); not re-read thanks to resets about 0.0M prompt tokens (0% of what would have been read)
     of which after advice about 0.0M (0% of the same base)
     estimate: assumes the conversations would have gone on the same way; all cache types counted together

@@ -77,6 +77,10 @@ type Advice struct {
 	// was given at, or the turn whose end it was given at. Request is the number
 	// of requests made before it.
 	Turn, Request int
+	// Rendered is set when an assistant message after it held the recommendation
+	// section the advice asked for, before the next advice or compaction. When
+	// it is not, the user never saw the advice.
+	Rendered bool
 }
 
 // Resume is a prompt that resumes from a handoff file.
@@ -489,6 +493,9 @@ func (r *Reader) add(conv *Conversation, pending **Turn, lastMessageID *string, 
 		}
 		conv.Blocks = append(conv.Blocks, block)
 		conv.Writes = append(conv.Writes, handoffWrites(m.Content, ts)...)
+		if hasSection(m.Content) {
+			markRendered(conv)
+		}
 		if m.Usage == nil || (m.ID != "" && m.ID == *lastMessageID) {
 			return // a content block of a request already counted
 		}
@@ -532,6 +539,39 @@ func isAdvice(e entry) bool {
 	// transcripts still hold.
 	case a.Type == "hook_blocking_error" && a.HookEvent == "Stop":
 		return a.BlockingError != nil && strings.HasPrefix(a.BlockingError.BlockingError, advisor.MessagePrefix)
+	}
+	return false
+}
+
+// markRendered records that the last advice got its section. The advice asks
+// for it in the reply of the turn it lands in, but a prompt typed while the
+// model answers is recorded as a turn of its own before the advice, so the
+// reply carrying the section belongs to the turn after the one the advice is
+// numbered at. The section is therefore counted for the last advice wherever
+// it comes, until the next advice or a compaction, which makes it moot,
+// replaces it: a section further away belongs to another advice, not this one.
+func markRendered(conv *Conversation) {
+	if len(conv.Advices) == 0 {
+		return
+	}
+	a := &conv.Advices[len(conv.Advices)-1]
+	if n := len(conv.Compactions); n > 0 && conv.Compactions[n-1].Time.After(a.Time) {
+		return
+	}
+	a.Rendered = true
+}
+
+// hasSection reports whether an assistant message holds the recommendation
+// section the advice asks for: a line of a blockquote starting with **Jalon**,
+// not the name in bold within an answer.
+func hasSection(raw json.RawMessage) bool {
+	if !bytes.Contains(raw, []byte(`**Jalon**`)) {
+		return false
+	}
+	for line := range strings.Lines(promptText(raw)) {
+		if strings.HasPrefix(strings.TrimSpace(line), "> **Jalon**") {
+			return true
+		}
 	}
 	return false
 }
