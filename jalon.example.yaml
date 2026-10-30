@@ -7,5 +7,5 @@
 context:
   enabled: true
   advise_tokens: 200000        # growth above the starting size (system prompt, tools) at which a reset is first advised
-  advise_step_tokens: 150000   # growth needed after an advice before the next one
+  advise_step_tokens: 60000    # growth needed after an advice before the next one
   stale_after_turns: 5         # tool results older than this many user turns count as stale
