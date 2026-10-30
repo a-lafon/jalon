@@ -11,6 +11,7 @@
 
 # Local tool files: Claude Code project files, the OpenSpec workspace
 /.claude/
+/CLAUDE.md
 /openspec/
 
 # Written by Claude Code when it loads the mod from its folder
