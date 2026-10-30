@@ -15,7 +15,7 @@ In five days of my own sessions, a request at 400K tokens cost three and a half 
 
 ## What you see
 
-When a conversation's context has grown by 200K tokens above its starting size, and again after every further 150K, the model ends its answer with one recommendation, in your language, in a quoted block that starts with **Jalon**: a new session, a handoff to resume from, or a `/compact` line. You run the command; Jalon never does.
+When a conversation's context has grown by 200K tokens above its starting size, and again after every further 60K, the model ends its answer with one recommendation, in your language, in a quoted block that starts with **Jalon**: a new session, a handoff to resume from, or a `/compact` line. You run the command; Jalon never does.
 
 Two real Claude Code sessions on a toy project, with `advise_tokens` lowered to 10K. After reading a long log to find why an export crashed, little needs to carry over, so the model gives a `/compact` line that keeps the cause and the next step and drops the log:
 
