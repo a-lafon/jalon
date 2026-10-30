@@ -31,6 +31,7 @@ var notHumanPrefixes = []string{
 	"Another Claude session sent a message", // a message from another session, with or without "while you were working"
 	"[Cross-session ",                       // idle and delivery notices
 	"<task-notification>",                   // background task reports
+	"<agent-message",                        // a subagent handing work back
 }
 
 func (Adapter) ReadPrompt(stdin []byte) (client.Prompt, error) {
