@@ -29,7 +29,7 @@ func TestStatePermissionsAndNoLeftovers(t *testing.T) {
 	if err := Record(dir, "s1", 1, t0, "", false); err != nil {
 		t.Fatal(err)
 	}
-	if err := MarkAdvised(dir, "s1", 1, t0, ""); err != nil {
+	if err := MarkAdvised(dir, "s1", 1, t0, "", ""); err != nil {
 		t.Fatal(err)
 	}
 	if fi, _ := os.Stat(dir); fi.Mode().Perm() != 0o700 {
@@ -51,7 +51,7 @@ func TestUnsafeSessionIDsAreIgnored(t *testing.T) {
 		if SafeSessionID(id) {
 			t.Errorf("%q must be unsafe", id)
 		}
-		if Record(dir, id, 1, t0, "", false) == nil || MarkAdvised(dir, id, 1, t0, "") == nil {
+		if Record(dir, id, 1, t0, "", false) == nil || MarkAdvised(dir, id, 1, t0, "", "") == nil {
 			t.Errorf("%q: a write must be refused", id)
 		}
 		if _, ok := Load(dir, id); ok {
@@ -71,7 +71,7 @@ func TestUnsafeSessionIDsAreIgnored(t *testing.T) {
 func TestMarkAdvisedKeepsTheSizeAndRecordKeepsTheStep(t *testing.T) {
 	dir := t.TempDir()
 	Record(dir, "s", 210_000, t0, "", false)
-	MarkAdvised(dir, "s", 210_000, t0, "")
+	MarkAdvised(dir, "s", 210_000, t0, "", "")
 	Record(dir, "s", 260_000, t0.Add(time.Minute), "", false)
 	got, _ := Load(dir, "s")
 	if got.Size != 260_000 || got.LastAdvised != 210_000 {
@@ -81,9 +81,7 @@ func TestMarkAdvisedKeepsTheSizeAndRecordKeepsTheStep(t *testing.T) {
 
 func TestMarkAdvisedRecordsTheVersion(t *testing.T) {
 	dir := t.TempDir()
-	defer func(v string) { Version = v }(Version)
-	Version = "0.6.0"
-	MarkAdvised(dir, "s", 210_000, t0, "")
+	MarkAdvised(dir, "s", 210_000, t0, "", "0.6.0")
 	if got, _ := Load(dir, "s"); got.Version != "0.6.0" {
 		t.Errorf("state = %+v, want the version that advised", got)
 	}
@@ -92,7 +90,7 @@ func TestMarkAdvisedRecordsTheVersion(t *testing.T) {
 func TestSetHandoffKeepsTheRestAndRecordKeepsTheHandoff(t *testing.T) {
 	dir := t.TempDir()
 	Record(dir, "s", 210_000, t0, "", false)
-	MarkAdvised(dir, "s", 210_000, t0, "")
+	MarkAdvised(dir, "s", 210_000, t0, "", "")
 	if err := SetHandoff(dir, "s", "p.md", "r4sefxw4", "2026-10-12-0900-r4sefxw4"); err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +109,7 @@ func TestSetHandoffKeepsTheRestAndRecordKeepsTheHandoff(t *testing.T) {
 func TestStateWithoutHandoffHasNoHandoffFields(t *testing.T) {
 	dir := t.TempDir()
 	Record(dir, "s", 210_000, t0, "", false)
-	MarkAdvised(dir, "s", 210_000, t0, "")
+	MarkAdvised(dir, "s", 210_000, t0, "", "")
 	b, _ := os.ReadFile(filepath.Join(dir, "s.json"))
 	if want := `{"size":210000,"recorded":"2026-10-12T09:00:00Z","last_advised":210000}`; string(b) != want {
 		t.Errorf("state file = %s, want %s", b, want)
@@ -121,7 +119,7 @@ func TestStateWithoutHandoffHasNoHandoffFields(t *testing.T) {
 func TestPromptIDsAreWrittenByTheirOwnWritesAndKeptByTheOthers(t *testing.T) {
 	dir := t.TempDir()
 	Record(dir, "s", 210_000, t0, "p1", false)
-	MarkAdvised(dir, "s", 210_000, t0, "p1")
+	MarkAdvised(dir, "s", 210_000, t0, "p1", "")
 	SetFloor(dir, "s", 50_000)
 	SetHandoff(dir, "s", "", "r4sefxw4", "2026-10-12/0900-r4sefxw4")
 	if got, _ := Load(dir, "s"); got.Prompt != "p1" || got.AdvisedPrompt != "p1" {
@@ -141,7 +139,7 @@ func TestTypedIsRecordedOnce(t *testing.T) {
 	}
 	Record(dir, "s", 110_000, t0, "p2", true)
 	Record(dir, "s", 120_000, t0, "p3", false)
-	MarkAdvised(dir, "s", 120_000, t0, "p3")
+	MarkAdvised(dir, "s", 120_000, t0, "p3", "")
 	if got, _ := Load(dir, "s"); !got.Typed {
 		t.Error("the session lost its typed prompt")
 	}
@@ -167,7 +165,7 @@ func TestStateWrittenBeforePromptIDsLoads(t *testing.T) {
 func TestStepResetsWhenTheSizeFallsUnderHalf(t *testing.T) {
 	dir := t.TempDir()
 	Record(dir, "s", 320_000, t0, "", false)
-	MarkAdvised(dir, "s", 320_000, t0, "")
+	MarkAdvised(dir, "s", 320_000, t0, "", "")
 	Record(dir, "s", 160_000, t0, "", false) // exactly half: not a reset
 	if got, _ := Load(dir, "s"); got.LastAdvised != 320_000 {
 		t.Errorf("at half: last advised = %d, want it kept", got.LastAdvised)

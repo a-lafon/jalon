@@ -76,3 +76,19 @@ func TestVersionCommandPrintsTheInjectedValues(t *testing.T) {
 		}
 	}
 }
+
+// An advice records the version the binary says it is, not the module version
+// of the build information, which a release build sets to a pseudo-version.
+func TestAnAdviceRecordsTheVersionTheBinaryWasBuiltWith(t *testing.T) {
+	released := &debug.BuildInfo{Main: debug.Module{Version: "v0.5.1-0.20261030154334-c0b0fc5f4c32"}}
+	if got := binaryVersion("0.5.1", released); got != "0.5.1" {
+		t.Errorf("released build = %q, want the injected 0.5.1", got)
+	}
+	// The report's "given by version" line and jalon version must say the same.
+	if line := versionLine("0.5.1", "", "", released); line != "jalon 0.5.1 (unknown, unknown)" {
+		t.Errorf("version line = %q, want the same 0.5.1", line)
+	}
+	if got := binaryVersion("", &debug.BuildInfo{Main: debug.Module{Version: "(devel)"}}); got != "" {
+		t.Errorf("checkout build = %q, want no version", got)
+	}
+}

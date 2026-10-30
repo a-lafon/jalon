@@ -376,9 +376,7 @@ func TestContextReportImpactFromTranscripts(t *testing.T) {
 	writeSession(t, dir, "resumed.jsonl", lines...)
 	// The version that advised is in the session state, not in the transcript.
 	t.Setenv("HOME", t.TempDir())
-	t.Cleanup(func(v string) func() { return func() { advisor.Version = v } }(advisor.Version))
-	advisor.Version = "9.9.9"
-	if err := advisor.MarkAdvised(filepath.Join(os.Getenv("HOME"), ".jalon", "sessions"), "parent", 311_000, now, "p1"); err != nil {
+	if err := advisor.MarkAdvised(filepath.Join(os.Getenv("HOME"), ".jalon", "sessions"), "parent", 311_000, now, "p1", "9.9.9"); err != nil {
 		t.Fatal(err)
 	}
 
