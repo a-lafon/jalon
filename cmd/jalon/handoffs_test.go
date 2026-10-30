@@ -67,6 +67,50 @@ func TestHandoffsPicksTheLatestAndNamesTheTwoBefore(t *testing.T) {
 	}
 }
 
+func TestHandoffsPrintsTheHandoffItFollows(t *testing.T) {
+	handoffProject(t, threadFiles)
+	out := handoffsOut(t, "parser")
+	for _, want := range []string{
+		"Handoff: 2026-10-11/0800-aaaaaaaa-parser.md\n",
+		"=== 2026-10-11/0800-aaaaaaaa-parser.md\n",
+		"=== 2026-10-10/0930-aaaaaaaa-keys.md, the handoff it follows\n",
+		"second\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "first") {
+		t.Errorf("printed past the parent:\n%s", out)
+	}
+}
+
+func TestHandoffsWithoutAParentToPrint(t *testing.T) {
+	handoffProject(t, threadFiles)
+	// The first of a thread: its own text alone, as before.
+	if out := handoffsOut(t, "flat"); strings.Count(out, "\n=== ") != 1 {
+		t.Errorf("printed more than the handoff:\n%s", out)
+	}
+	out := handoffsOut(t, "broken")
+	if !strings.Contains(out, "Goes on in 2026-10-01/0100-dddddddd-gone.md, which 2026-10-12/0700-dddddddd-broken.md names and which is not in the folder.\n") ||
+		strings.Count(out, "\n=== ") != 1 {
+		t.Errorf("missing parent:\n%s", out)
+	}
+}
+
+func TestHandoffsLeavesOutAParentOverTheLimit(t *testing.T) {
+	pad := strings.Repeat("x", threadPrintLimit)
+	handoffProject(t, map[string]string{
+		"2026-10-10/0100-aaaaaaaa-big.md":  "# Big\n" + pad + "\n",
+		"2026-10-10/0200-aaaaaaaa-next.md": "Follows: 2026-10-10/0100-aaaaaaaa-big.md\n\n# Next\nhere\n",
+	})
+	out := handoffsOut(t)
+	if !strings.Contains(out, "Not printed, as the thread is over 100 KB: 2026-10-10/0100-aaaaaaaa-big.md.\n") ||
+		!strings.Contains(out, "here\n") || strings.Count(out, "\n=== ") != 1 {
+		t.Errorf("got:\n%s", firstLines(out, 6))
+	}
+}
+
 func TestHandoffsPicksByPathOrWords(t *testing.T) {
 	folder := handoffProject(t, threadFiles)
 	for _, tc := range []struct {

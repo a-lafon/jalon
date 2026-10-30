@@ -56,9 +56,56 @@ func runHandoffs(args []string, out io.Writer) error {
 		slices.Reverse(prev)
 		before = strings.Join(prev, ", ")
 	}
+	parent, left := followedHandoff(folder, names, picked)
 	// transcript.pickedHandoff reads these two first lines back from the transcript.
 	fmt.Fprintf(out, "Folder: %s\nHandoff: %s\nBefore it: %s\n", folder, picked, before)
-	return printHandoff(out, folder, picked)
+	if left != "" {
+		fmt.Fprintln(out, left)
+	}
+	if err := printHandoff(out, folder, picked, ""); err != nil {
+		return err
+	}
+	if parent == "" {
+		return nil
+	}
+	return printHandoff(out, folder, parent, ", the handoff it follows")
+}
+
+// followedHandoff is the handoff picked follows, to print with it so a resume
+// reads the generation before it without opening the file, and left is the line
+// saying why there is none to print: it is not in the folder, or the two are
+// over threadPrintLimit.
+func followedHandoff(folder string, names []string, picked string) (parent, left string) {
+	parent = relHandoff(folder, followsOf(filepath.Join(folder, picked)))
+	switch {
+	case parent == "":
+		return "", ""
+	case !slices.Contains(names, parent):
+		return "", fmt.Sprintf("Goes on in %s, which %s names and which is not in the folder.", parent, picked)
+	case handoffSize(folder, picked)+handoffSize(folder, parent) > threadPrintLimit:
+		return "", fmt.Sprintf("Not printed, as the thread is over %s: %s.", kb(threadPrintLimit), parent)
+	}
+	return parent, ""
+}
+
+// handoffSize is the size of the handoff, 0 when it cannot be read.
+func handoffSize(folder, name string) int64 {
+	fi, err := os.Stat(filepath.Join(folder, name))
+	if err != nil {
+		return 0
+	}
+	return fi.Size()
+}
+
+// relHandoff is the handoff a Follows: line names, by its path relative to the
+// folder.
+func relHandoff(folder, follows string) string {
+	if filepath.IsAbs(follows) {
+		if rel, err := filepath.Rel(folder, follows); err == nil {
+			return filepath.ToSlash(rel)
+		}
+	}
+	return follows
 }
 
 // listHandoffs is the .md files under folder, at any depth, by their path
@@ -165,14 +212,9 @@ func printThread(out io.Writer, folder string, names []string, last string) erro
 	chain := []string{last}
 	missing, namedBy := "", ""
 	for cur := last; ; {
-		next := followsOf(filepath.Join(folder, cur))
+		next := relHandoff(folder, followsOf(filepath.Join(folder, cur)))
 		if next == "" {
 			break
-		}
-		if filepath.IsAbs(next) {
-			if rel, err := filepath.Rel(folder, next); err == nil {
-				next = filepath.ToSlash(rel)
-			}
 		}
 		if !slices.Contains(names, next) {
 			missing, namedBy = next, cur
@@ -209,20 +251,20 @@ func printThread(out io.Writer, folder string, names []string, last string) erro
 		printed = append([]string{chain[0]}, chain[len(chain)-threadTail:]...)
 	}
 	for _, n := range printed {
-		if err := printHandoff(out, folder, n); err != nil {
+		if err := printHandoff(out, folder, n, ""); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// printHandoff prints the handoff's name and its text.
-func printHandoff(out io.Writer, folder, name string) error {
+// printHandoff prints the handoff's name, what note says it is, and its text.
+func printHandoff(out io.Writer, folder, name, note string) error {
 	b, err := os.ReadFile(filepath.Join(folder, name))
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "\n=== %s\n%s", name, b)
+	fmt.Fprintf(out, "\n=== %s%s\n%s", name, note, b)
 	if len(b) > 0 && b[len(b)-1] != '\n' {
 		fmt.Fprintln(out)
 	}
