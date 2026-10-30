@@ -192,11 +192,11 @@ func runPromptHook(ctx context.Context, args []string, stdin io.Reader, out io.W
 		if err != nil {
 			return nil
 		}
-		advisor.Sweep(dir, now, stateMaxAge)
 		cfg, ok := loadConfig(flags, *configPath)
 		if !ok || !cfg.Context.Enabled {
 			return nil
 		}
+		advisor.Sweep(dir, now, stateMaxAge)
 
 		// A resume shows as the handoff's path in the prompt: the advice's own
 		// resume line holds it. Only the session's first prompt written by a
