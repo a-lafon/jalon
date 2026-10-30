@@ -90,7 +90,7 @@ func TestSetThresholdsKeepsTheExampleConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := strings.Replace(string(data), "advise_tokens: 200000", "advise_tokens: 250000", 1)
-	want = strings.Replace(want, "advise_step_tokens: 150000", "advise_step_tokens: 100000", 1)
+	want = strings.Replace(want, "advise_step_tokens: 60000", "advise_step_tokens: 100000", 1)
 	if string(got) != want {
 		t.Errorf("got:\n%s", got)
 	}

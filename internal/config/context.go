@@ -17,7 +17,7 @@ type Context struct {
 }
 
 func defaultContext() Context {
-	return Context{Enabled: true, AdviseTokens: 200000, AdviseStepTokens: 150000, StaleAfterTurns: 5}
+	return Context{Enabled: true, AdviseTokens: 200000, AdviseStepTokens: 60000, StaleAfterTurns: 5}
 }
 
 func (c Context) validate() error {

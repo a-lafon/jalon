@@ -10,7 +10,7 @@ func TestContextDefaultsAndOverrides(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := (Context{Enabled: true, AdviseTokens: 200000, AdviseStepTokens: 150000, StaleAfterTurns: 5}); cfg.Context != want {
+	if want := (Context{Enabled: true, AdviseTokens: 200000, AdviseStepTokens: 60000, StaleAfterTurns: 5}); cfg.Context != want {
 		t.Errorf("context = %+v, want %+v", cfg.Context, want)
 	}
 
@@ -18,7 +18,7 @@ func TestContextDefaultsAndOverrides(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Context.Enabled || cfg.Context.AdviseTokens != 150000 || cfg.Context.AdviseStepTokens != 150000 {
+	if cfg.Context.Enabled || cfg.Context.AdviseTokens != 150000 || cfg.Context.AdviseStepTokens != 60000 {
 		t.Errorf("context = %+v", cfg.Context)
 	}
 }

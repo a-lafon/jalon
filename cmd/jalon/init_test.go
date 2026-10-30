@@ -314,7 +314,7 @@ func TestInitPrintsDefaultThresholds(t *testing.T) {
 	withExecutable(t, testExe)
 	path := filepath.Join(t.TempDir(), "settings.json")
 	out := runInitOK(t, "-settings", path)
-	if !strings.Contains(out, "Thresholds in force: advise_tokens 200,000, advise_step_tokens 150,000, from the defaults") ||
+	if !strings.Contains(out, "Thresholds in force: advise_tokens 200,000, advise_step_tokens 60,000, from the defaults") ||
 		!strings.Contains(out, "--advise-tokens <n> --advise-step-tokens <n>") {
 		t.Errorf("output = %q", out)
 	}
@@ -328,7 +328,7 @@ func TestInitSetsAThresholdInANewConfig(t *testing.T) {
 	settings, cfg := filepath.Join(t.TempDir(), "settings.json"), homeConfig(t, "", 0)
 	out := runInitOK(t, "-settings", settings, "-advise-tokens", "200000")
 	if !strings.Contains(out, "Wrote "+cfg+".") ||
-		!strings.Contains(out, "Thresholds in force: advise_tokens 200,000, advise_step_tokens 150,000, from "+cfg) {
+		!strings.Contains(out, "Thresholds in force: advise_tokens 200,000, advise_step_tokens 60,000, from "+cfg) {
 		t.Errorf("output = %q", out)
 	}
 	if b, _ := os.ReadFile(cfg); string(b) != "context:\n  advise_tokens: 200000\n" {

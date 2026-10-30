@@ -6,7 +6,7 @@ Jalon reads `~/.jalon/config.yaml`, or the file given with `-config <path>`. Eve
 context:
   enabled: true
   advise_tokens: 200000        # growth above the starting size at which a reset is first advised
-  advise_step_tokens: 150000   # growth needed after an advice before the next one
+  advise_step_tokens: 60000    # growth needed after an advice before the next one
   stale_after_turns: 5         # tool results older than this many user turns count as stale
 ```
 
@@ -33,7 +33,7 @@ The status line is added only when you have none; see [status line](how-it-works
 It then prints the advisor's thresholds in force and where they come from, the config file or the defaults:
 
 ```
-Thresholds in force: advise_tokens 200,000, advise_step_tokens 150,000, from the defaults (no config file).
+Thresholds in force: advise_tokens 200,000, advise_step_tokens 60,000, from the defaults (no config file).
 Change them with jalon init --advise-tokens <n> --advise-step-tokens <n>.
 ```
 
