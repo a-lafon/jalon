@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/a-lafon/jalon/internal/advisor"
 	"github.com/a-lafon/jalon/internal/client"
 )
 
@@ -104,7 +105,7 @@ var (
 	usageMark   = []byte(`"usage"`)
 	compactMark = []byte(`compact_boundary`)
 	humanMark   = []byte(`"human"`)
-	sectionMark = []byte(`**Jalon**`)
+	sectionMark = []byte(advisor.SectionMark)
 )
 
 // scanTail scans the lines of buf from the end, until the size and, with typed,
@@ -174,7 +175,7 @@ func messageSection(content json.RawMessage) bool {
 		return false
 	}
 	for _, b := range blocks {
-		if b.Type == "text" && client.HasSection(b.Text) {
+		if b.Type == "text" && advisor.HasSection(b.Text) {
 			return true
 		}
 	}

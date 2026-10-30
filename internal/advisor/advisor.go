@@ -3,6 +3,8 @@
 // advice, so the live hook and the offline report run the same code.
 package advisor
 
+import "strings"
+
 // Kind is the advice given at the start of a user turn.
 type Kind string
 
@@ -15,6 +17,20 @@ const (
 // stop hook blocks with, when they advise a reset. The context report finds the
 // advice given in the transcripts by it.
 const MessagePrefix = "Jalon: context at "
+
+// SectionMark is the bold name the section the advice asks for starts with.
+const SectionMark = "**Jalon**"
+
+// HasSection tells whether msg holds a Jalon section: a blockquote line that
+// starts with **Jalon**, not the name in bold within an answer.
+func HasSection(msg string) bool {
+	for line := range strings.Lines(msg) {
+		if strings.HasPrefix(strings.TrimSpace(line), "> "+SectionMark) {
+			return true
+		}
+	}
+	return false
+}
 
 // Config holds the thresholds, in prompt tokens.
 type Config struct {

@@ -565,15 +565,7 @@ func markRendered(conv *Conversation) {
 // section the advice asks for: a line of a blockquote starting with **Jalon**,
 // not the name in bold within an answer.
 func hasSection(raw json.RawMessage) bool {
-	if !bytes.Contains(raw, []byte(`**Jalon**`)) {
-		return false
-	}
-	for line := range strings.Lines(promptText(raw)) {
-		if strings.HasPrefix(strings.TrimSpace(line), "> **Jalon**") {
-			return true
-		}
-	}
-	return false
+	return bytes.Contains(raw, []byte(advisor.SectionMark)) && advisor.HasSection(promptText(raw))
 }
 
 // resumeOf is the resume a prompt holds, nil when it names no handoff file by
