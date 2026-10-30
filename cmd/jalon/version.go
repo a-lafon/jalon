@@ -21,10 +21,8 @@ func runVersion(out io.Writer) {
 // (nil when there is none), records, else dev or unknown.
 func versionLine(version, commit, date string, info *debug.BuildInfo) string {
 	commit = shortCommit(commit)
+	version = binaryVersion(version, info)
 	if info != nil {
-		if version == "" && info.Main.Version != "(devel)" {
-			version = info.Main.Version
-		}
 		vcs := map[string]string{}
 		for _, s := range info.Settings {
 			vcs[s.Key] = s.Value
@@ -49,6 +47,23 @@ func versionLine(version, commit, date string, info *debug.BuildInfo) string {
 		date = "unknown"
 	}
 	return fmt.Sprintf("jalon %s (%s, %s)", version, commit, date)
+}
+
+// binaryVersion is the version this build says it is: the one the release
+// injected, else the module version build information records, "" for a build
+// that carries neither, such as a checkout or a test binary.
+func binaryVersion(version string, info *debug.BuildInfo) string {
+	if version == "" && info != nil && info.Main.Version != "(devel)" {
+		version = info.Main.Version
+	}
+	return version
+}
+
+// adviceVersion is the version an advice records, the one jalon version
+// prints: the report then names the build the user runs.
+func adviceVersion() string {
+	info, _ := debug.ReadBuildInfo()
+	return binaryVersion(version, info)
 }
 
 // shortCommit is the first 7 characters of a commit hash.

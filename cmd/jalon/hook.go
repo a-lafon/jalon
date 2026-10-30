@@ -326,7 +326,7 @@ func runStopHook(ctx context.Context, args []string, stdin io.Reader, out io.Wri
 		// earlier turn asked: that reply already proposes a reset, so the advice
 		// is recorded, and a block would only make it give a second section.
 		if client.HasSection(ev.LastMessage) {
-			_ = advisor.MarkAdvised(dir, ev.Session, st.Size, now, ev.ID)
+			_ = advisor.MarkAdvised(dir, ev.Session, st.Size, now, ev.ID, adviceVersion())
 			return nil
 		}
 		body, ok := recordAdvice(dir, adapter, ev.Prompt, st, tail.CacheTTL, now, false)
@@ -493,7 +493,7 @@ func recordAdvice(dir string, adapter client.Adapter, p client.Prompt, st adviso
 	// Record the advice before it is shown, so the next prompt does not repeat it.
 	// A handoff asked before the first size is known records no advised size.
 	if st.Size > 0 {
-		_ = advisor.MarkAdvised(dir, p.Session, st.Size, now, p.ID)
+		_ = advisor.MarkAdvised(dir, p.Session, st.Size, now, p.ID, adviceVersion())
 	}
 	_ = advisor.SetHandoff(dir, p.Session, parent, thread, name)
 	return fillBody(adapter, handoffDir, name, handoffHeader(parent, p.Session), ttl), true

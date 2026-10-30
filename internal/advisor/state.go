@@ -5,7 +5,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"runtime/debug"
 	"strings"
 	"time"
 )
@@ -98,23 +97,11 @@ func Record(dir, id string, size int, now time.Time, prompt string, typed bool) 
 	return write(dir, id, s)
 }
 
-// Version is the build that gives an advice, recorded with it so the report
-// can tell which version advised. It is read from the binary's build
-// information, the only source a hook has, and is "" for a build that carries
-// none, such as a test binary.
-var Version = buildVersion()
-
-func buildVersion() string {
-	info, ok := debug.ReadBuildInfo()
-	if !ok || info.Main.Version == "(devel)" {
-		return ""
-	}
-	return info.Main.Version
-}
-
 // MarkAdvised stores size as the last advised size of a session, the prompt it
-// was advised at and the version that gave it, keeping the rest of its state.
-func MarkAdvised(dir, id string, size int, now time.Time, prompt string) error {
+// was advised at and version, the build that gives it, keeping the rest of its
+// state. The version is the caller's: only the command knows which build it is,
+// since the release injects it into the main package.
+func MarkAdvised(dir, id string, size int, now time.Time, prompt, version string) error {
 	if !SafeSessionID(id) {
 		return errors.New("unsafe session id")
 	}
@@ -122,7 +109,7 @@ func MarkAdvised(dir, id string, size int, now time.Time, prompt string) error {
 	if s.Recorded.IsZero() {
 		s.Size, s.Recorded = size, now
 	}
-	s.LastAdvised, s.AdvisedPrompt, s.Version = size, prompt, Version
+	s.LastAdvised, s.AdvisedPrompt, s.Version = size, prompt, version
 	return write(dir, id, s)
 }
 
