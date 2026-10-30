@@ -196,6 +196,61 @@ func TestReadTailTyped(t *testing.T) {
 	}
 }
 
+// sectionLine is an assistant entry whose content blocks hold the section; the
+// handoff write that may follow it is a tool_use block, with no text.
+func sectionLine(sidechain bool) string {
+	return fmt.Sprintf(`{"type":"assistant","isSidechain":%t,"message":{"role":"assistant","content":[{"type":"text","text":"Voilà.\n\n> **Jalon** — Handoff : …"}]}}`, sidechain)
+}
+
+func TestReadTailSection(t *testing.T) {
+	const instruction = `{"type":"user","promptId":"p1","message":{"role":"user","content":"Jalon: … whose first words are\n**Jalon** —, in the language the user writes in"}}`
+	tests := map[string]struct {
+		lines []string
+		want  bool
+	}{
+		"the reply ends with it":        {[]string{typedLine("p1", true, false), sectionLine(false), sizeLine(60_000, false)}, true},
+		"the handoff file follows it":   {[]string{typedLine("p1", true, false), sectionLine(false), sizeLine(60_000, false), sizeLine(61_000, false)}, true},
+		"no message of the turn has it": {[]string{typedLine("p1", true, false), sizeLine(60_000, false)}, false},
+		"given in an earlier turn":      {[]string{sectionLine(false), typedLine("p1", true, false), sizeLine(60_000, false)}, false},
+		"given by a subagent":           {[]string{typedLine("p1", true, false), sectionLine(true), sizeLine(60_000, false)}, false},
+		"the instruction is not one":    {[]string{typedLine("p1", true, false), instruction, sizeLine(60_000, false)}, false},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			path := writeLines(t, tt.lines...)
+			if got := readTail(path, "p1", true); got.Section != tt.want {
+				t.Errorf("section = %v, want %v", got.Section, tt.want)
+			}
+			// It is looked for only with the prompt ID that bounds the turn.
+			if got := readTail(path, "", true); got.Section {
+				t.Error("section found without a prompt ID")
+			}
+			if got := readTail(path, "p1", false); got.Section {
+				t.Error("section found without being looked for")
+			}
+		})
+	}
+}
+
+// The section is bounded by the turn's prompt, so looking for it never grows
+// the window beyond what the typed prompt already needs.
+func TestReadTailSectionReadsNoMoreThanTheTypedPrompt(t *testing.T) {
+	path := bigFile(t, nil, 10<<20, []string{typedLine("p1", true, false), sectionLine(false), sizeLine(250_000, false)})
+	saved, read := readAt, 0
+	readAt = func(f *os.File, b []byte, off int64) (int, error) {
+		n, err := saved(f, b, off)
+		read += n
+		return n, err
+	}
+	t.Cleanup(func() { readAt = saved })
+	if got := readTail(path, "p1", true); !got.Section || !got.Typed || got.Size != 250_000 {
+		t.Fatalf("tail = %+v", got)
+	}
+	if read > tailStart {
+		t.Errorf("read %d bytes of a 10 MB transcript, want at most the last %d", read, tailStart)
+	}
+}
+
 func TestReadTailLooksForTheTypedPromptAsFarAsForTheSize(t *testing.T) {
 	// A long turn: the prompt is 3 MB before the end, the size at the end.
 	path := bigFile(t, []string{typedLine("p1", true, false)}, 3<<20, []string{sizeLine(250_000, false)})
