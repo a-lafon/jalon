@@ -120,7 +120,10 @@ func hookThresholds() advisor.Config {
 
 // markVersions names, for each advice given, the Jalon version that gave it.
 // The transcript does not hold it: it is read from the session state, which is
-// swept after a week, so an older advice stays unknown.
+// swept after a week, so an older advice stays unknown. The state holds one
+// version, that of the session's last advice, so a session that spans an
+// upgrade credits all of its advice to the build it ended on; the report says
+// so rather than keeping a version per prompt.
 func markVersions(im ctxreport.Impact, convs []transcript.Conversation) {
 	dir, err := sessionsDir()
 	if err != nil {
@@ -193,7 +196,7 @@ func printImpact(out io.Writer, im ctxreport.Impact) {
 	}
 	fmt.Fprintf(out, "; never shown %d (no reply gave the Jalon section before the next advice: no reset is linked to them)\n", missed)
 	if len(im.Advices) > 0 {
-		fmt.Fprintf(out, "  given by %s\n", versionCounts(versions))
+		fmt.Fprintf(out, "  given by %s (the version of each session's last advice)\n", versionCounts(versions))
 	}
 
 	advised := 0

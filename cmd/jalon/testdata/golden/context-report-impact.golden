@@ -1,7 +1,7 @@
 
 Impact (transcripts; estimates)
   advice given 2: followed by a compaction 0, by a handoff 1, nothing seen 1; lead p50 1 turn; never shown 1 (no reply gave the Jalon section before the next advice: no reset is linked to them)
-  given by version 0.5.0 1, unknown 1
+  given by version 0.5.0 1, unknown 1 (the version of each session's last advice)
   resets 3 (1 advised, 2 unprompted); handoff resumes not linked 1
   prompt tokens read 41.2M (every request of this period, in the conversations you typed in); not re-read thanks to resets about 15.1M prompt tokens (27% of what would have been read)
     of which after advice about 10.1M (18% of the same base)

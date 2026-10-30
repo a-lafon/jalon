@@ -388,7 +388,7 @@ func TestContextReportImpactFromTranscripts(t *testing.T) {
 	// Before is the parent's last request, 311K; after 45K; 4 requests follow.
 	for _, want := range []string{
 		"advice given 1: followed by a compaction 0, by a handoff 1, nothing seen 0; lead p50 0 turns; never shown 0",
-		"  given by version 9.9.9 1\n",
+		"  given by version 9.9.9 1 (the version of each session's last advice)\n",
 		"resets 1 (1 advised, 0 unprompted); handoff resumes not linked 0",
 		"not re-read thanks to resets about 1.1M prompt tokens",
 		"of which after advice about 1.1M",
