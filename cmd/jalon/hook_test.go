@@ -1260,6 +1260,15 @@ func TestStopHookNoReminderWhenTheSectionCameBeforeTheFile(t *testing.T) {
 	}
 }
 
+// A reply that names Jalon in bold is not the section the advice asked for.
+func TestStopHookRemindsWhenTheReplyOnlyNamesJalonInBold(t *testing.T) {
+	repo, cfg, _ := advisedAt1748(t)
+	out := parseStop(t, runStop(t, cfg, stopInput("s1", "p1", repo, "La fonction **Jalon** est corrigée.", false)))
+	if !strings.HasPrefix(out.Reason, reminderPrefix) {
+		t.Errorf("reason = %q, want a reminder", out.Reason)
+	}
+}
+
 // Task 1.6: the reminder is the fallback for a turn that gave no section at all.
 func TestStopHookRemindsWhenNoMessageOfTheTurnGaveTheSection(t *testing.T) {
 	repo, cfg, _ := advisedAt1748(t)

@@ -286,8 +286,8 @@ func runStopHook(ctx context.Context, args []string, stdin io.Reader, out io.Wri
 		}
 
 		if st.AdvisedPrompt == ev.ID {
-			// The cheap case: the reply ends with the section.
-			if strings.Contains(ev.LastMessage, "**Jalon**") {
+			// The cheap case: the turn's last message holds the section.
+			if advisor.HasSection(ev.LastMessage) {
 				return nil
 			}
 			// After a compaction during the turn, the advice is moot.
@@ -308,7 +308,7 @@ func runStopHook(ctx context.Context, args []string, stdin io.Reader, out io.Wri
 			}
 			// One sentence, not the body: the model got the body at the start of the
 			// turn, and Claude Code's terminal prints the whole reason.
-			reason += "Add now, as your last message, that section: a Markdown blockquote starting with **Jalon** — that recommends ONE option, a new session, a handoff written to " +
+			reason += "Add now, as your last message, that section: a Markdown blockquote starting with " + advisor.SectionMark + " — that recommends ONE option, a new session, a handoff written to " +
 				filepath.Join(handoffDir, st.Proposed) + "-<short-slug>.md with the lines to copy, or a " + adapter.Commands().Compact + " line."
 			reply, err := stopper.StopReply(reason, "")
 			if err != nil {
@@ -325,7 +325,7 @@ func runStopHook(ctx context.Context, args []string, stdin io.Reader, out io.Wri
 		// A model may end its reply with a section of its own, as the advice of an
 		// earlier turn asked: that reply already proposes a reset, so the advice
 		// is recorded, and a block would only make it give a second section.
-		if client.HasSection(ev.LastMessage) {
+		if advisor.HasSection(ev.LastMessage) {
 			_ = advisor.MarkAdvised(dir, ev.Session, st.Size, now, ev.ID, adviceVersion())
 			return nil
 		}
