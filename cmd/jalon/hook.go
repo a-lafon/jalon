@@ -152,6 +152,18 @@ const stateMaxAge = 7 * 24 * time.Hour
 // nothing, and exits 0, unless a reset is advised, and it never fails the
 // prompt: any error just means no advice this time. It reads the context size
 // from the transcript, so it needs no status line.
+// loadConfig loads the config and names on stderr why it did not load: the
+// loader rejects a key it does not know, and a hook that then silently does
+// nothing looks like a Jalon that is not installed rather than a typo.
+func loadConfig(flags *flag.FlagSet, path string) (config.Config, bool) {
+	cfg, err := cli.LoadConfig(flags, path)
+	if err != nil {
+		fmt.Fprintln(stderr, "jalon:", err)
+		return cfg, false
+	}
+	return cfg, true
+}
+
 func runPromptHook(ctx context.Context, args []string, stdin io.Reader, out io.Writer, now time.Time) error {
 	flags := flag.NewFlagSet("hook prompt", flag.ContinueOnError)
 	configPath := flags.String("config", config.DefaultPath(), "path to the config file")
@@ -181,8 +193,8 @@ func runPromptHook(ctx context.Context, args []string, stdin io.Reader, out io.W
 			return nil
 		}
 		advisor.Sweep(dir, now, stateMaxAge)
-		cfg, err := cli.LoadConfig(flags, *configPath)
-		if err != nil || !cfg.Context.Enabled {
+		cfg, ok := loadConfig(flags, *configPath)
+		if !ok || !cfg.Context.Enabled {
 			return nil
 		}
 
@@ -280,8 +292,8 @@ func runStopHook(ctx context.Context, args []string, stdin io.Reader, out io.Wri
 		// blocked; that is looked for only before blocking, since in a program's
 		// session the search reads 8 MB.
 		typed := func() bool { return adapter.ReadTail(ev.Prompt, ev.ID, true).Typed }
-		cfg, err := cli.LoadConfig(flags, *configPath)
-		if err != nil || !cfg.Context.Enabled {
+		cfg, loaded := loadConfig(flags, *configPath)
+		if !loaded || !cfg.Context.Enabled {
 			return nil
 		}
 
