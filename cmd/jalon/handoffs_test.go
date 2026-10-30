@@ -133,6 +133,29 @@ func TestHandoffsPicksByPathOrWords(t *testing.T) {
 	}
 }
 
+// A handoff path copied from another checkout matches nothing here: it must
+// not fall through to this project's latest handoff, which /jalon-resume would
+// then feed to the model as the work to resume.
+func TestHandoffsRefusesAPathOutsideTheProject(t *testing.T) {
+	other := filepath.Join(t.TempDir(), "elsewhere.md")
+	if err := os.WriteFile(other, []byte("# Another project\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	folder := handoffProject(t, threadFiles)
+	var out strings.Builder
+	err := runHandoffs([]string{other}, &out)
+	if err == nil || !strings.Contains(err.Error(), other) {
+		t.Fatalf("err = %v, want it to name %s", err, other)
+	}
+	if out.String() != "" {
+		t.Errorf("printed a handoff anyway:\n%s", out.String())
+	}
+	// A path that does not exist at all still falls through to the word match.
+	if got := handoffsOut(t, filepath.Join(folder, "..", "gone.md")); !strings.Contains(got, "No handoff matched") {
+		t.Errorf("missing file: want the fall-through, got:\n%s", got)
+	}
+}
+
 func TestHandoffsWithoutHandoff(t *testing.T) {
 	folder := handoffProject(t, nil)
 	if out := handoffsOut(t, "-thread"); out != "No handoff in "+folder+".\n" {
