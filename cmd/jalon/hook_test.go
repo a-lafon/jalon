@@ -282,6 +282,12 @@ func programPrompt(promptID string) string {
 	return fmt.Sprintf(`{"type":"user","isSidechain":false,"promptId":%q,"message":{"role":"user","content":"run the task"}}`+"\n", promptID)
 }
 
+// sectionLine is the transcript entry of an assistant message that gave the
+// Jalon section, as Claude Code writes it: content as a list of blocks.
+func sectionLine() string {
+	return `{"type":"assistant","isSidechain":false,"message":{"role":"assistant","content":[{"type":"text","text":"Voilà.\n\n> **Jalon** — Handoff : …"}]}}` + "\n"
+}
+
 // appendTranscript appends lines to the session's transcript.
 func appendTranscript(t *testing.T, session string, lines ...string) {
 	t.Helper()
@@ -1219,6 +1225,28 @@ func TestStopHookSectionMissing(t *testing.T) {
 			t.Errorf("reason = %q", out.Reason)
 		}
 	})
+}
+
+// The model gives the section, then writes the handoff the section recommends,
+// so the turn's last message no longer holds it. Reminding then would show the
+// user a second section for an advice they have already seen.
+func TestStopHookNoReminderWhenTheSectionCameBeforeTheFile(t *testing.T) {
+	repo, cfg, prefix := advisedAt1748(t)
+	appendTranscript(t, "s1", sectionLine(), assistantLine(276_000))
+	writeHandoff(t, repo, prefix+"-alpha-review-2.md")
+	if got := runStop(t, cfg, stopInput("s1", "p1", repo, "Le fichier de reprise est écrit.", false)); got != "" {
+		t.Errorf("output = %q, want nothing", got)
+	}
+}
+
+// Task 1.6: the reminder is the fallback for a turn that gave no section at all.
+func TestStopHookRemindsWhenNoMessageOfTheTurnGaveTheSection(t *testing.T) {
+	repo, cfg, _ := advisedAt1748(t)
+	appendTranscript(t, "s1", assistantLine(276_000), assistantLine(277_000))
+	out := parseStop(t, runStop(t, cfg, stopInput("s1", "p1", repo, "Le fichier de reprise est écrit.", false)))
+	if !strings.HasPrefix(out.Reason, reminderPrefix) {
+		t.Errorf("reason = %q, want a reminder", out.Reason)
+	}
 }
 
 func TestPromptHookAsksToKeepTheHandoffUpToDate(t *testing.T) {

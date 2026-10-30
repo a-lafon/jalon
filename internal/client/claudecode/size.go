@@ -85,7 +85,10 @@ type tailEntry struct {
 		PostTokens *int `json:"postTokens"`
 	} `json:"compactMetadata"`
 	Message struct {
-		Usage *struct {
+		// Raw, since a user entry's content is a string where an assistant's is
+		// a list of blocks, and a failed decode would lose the whole entry.
+		Content json.RawMessage `json:"content"`
+		Usage   *struct {
 			Input         int `json:"input_tokens"`
 			CacheRead     int `json:"cache_read_input_tokens"`
 			CacheCreation int `json:"cache_creation_input_tokens"`
@@ -101,29 +104,40 @@ var (
 	usageMark   = []byte(`"usage"`)
 	compactMark = []byte(`compact_boundary`)
 	humanMark   = []byte(`"human"`)
+	sectionMark = []byte(`**Jalon**`)
 )
 
 // scanTail scans the lines of buf from the end, until the size and, with typed,
 // a typed prompt are found. sized is true when an entry decided the size, even
 // to say there is none.
 func scanTail(buf []byte, promptID string, typed bool) (tail client.Tail, sized bool) {
-	for end := len(buf); end > 0 && (!sized || typed && !tail.Typed); {
+	// The section is looked for back to the turn's own prompt: the model gives
+	// it before the handoff file, so it is not always the turn's last message.
+	section := typed && promptID != ""
+	for end := len(buf); end > 0 && (!sized || typed && !tail.Typed || section); {
 		start := bytes.LastIndexByte(buf[:end], '\n') + 1
 		line := buf[start:end]
 		end = start - 1
 		// Cheap filter before parsing: most lines are none of these.
 		lookSize := !sized && (bytes.Contains(line, usageMark) || bytes.Contains(line, compactMark))
 		lookTyped := typed && !tail.Typed && bytes.Contains(line, humanMark)
-		if !lookSize && !lookTyped {
+		lookSection := section && bytes.Contains(line, sectionMark)
+		if !lookSize && !lookTyped && !lookSection {
 			continue
 		}
 		var e tailEntry
 		if json.Unmarshal(line, &e) != nil {
 			continue
 		}
+		// Apart, since the entry that gave the section often carries the size too.
+		if lookSection && e.Type == "assistant" && !e.IsSidechain && messageSection(e.Message.Content) {
+			tail.Section, section = true, false
+		}
 		switch {
 		case lookTyped && e.Type == "user" && !e.IsSidechain && e.Origin.Kind == "human":
 			tail.Typed = promptID == "" || e.PromptID == promptID
+			// The turn's own prompt: what comes before it is an earlier turn.
+			section = section && !tail.Typed
 		case !lookSize:
 		case e.Type == "system" && e.Subtype == "compact_boundary":
 			sized = true
@@ -146,4 +160,23 @@ func scanTail(buf []byte, promptID string, typed bool) (tail client.Tail, sized 
 		}
 	}
 	return tail, sized
+}
+
+// messageSection tells whether an assistant message's content holds a Jalon
+// section. The content is the list of blocks Claude Code writes; anything else
+// holds none.
+func messageSection(content json.RawMessage) bool {
+	var blocks []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	if json.Unmarshal(content, &blocks) != nil {
+		return false
+	}
+	for _, b := range blocks {
+		if b.Type == "text" && client.HasSection(b.Text) {
+			return true
+		}
+	}
+	return false
 }

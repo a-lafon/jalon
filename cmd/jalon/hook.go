@@ -286,18 +286,23 @@ func runStopHook(ctx context.Context, args []string, stdin io.Reader, out io.Wri
 		}
 
 		if st.AdvisedPrompt == ev.ID {
-			// The instruction asks to end the reply with the section, so only the
-			// last message counts.
+			// The cheap case: the reply ends with the section.
 			if strings.Contains(ev.LastMessage, "**Jalon**") {
 				return nil
 			}
 			// After a compaction during the turn, the advice is moot.
-			if advisor.Compacted(st.LastAdvised, adapter.ReadTail(ev.Prompt, "", false).Size) || !typed() {
+			if advisor.Compacted(st.LastAdvised, adapter.ReadTail(ev.Prompt, "", false).Size) {
+				return nil
+			}
+			// The handoff file is written after the section, so the turn need not
+			// end with it: reminding then would show the user a second section.
+			// One read for both, in place of the typed one the block needs anyway.
+			if turn := adapter.ReadTail(ev.Prompt, ev.ID, true); turn.Section || !turn.Typed {
 				return nil
 			}
 			handoffDir := handoffFolder(ev.Dir)
 			reason := reminderPrefix + ", context at " + cli.TokensK(float64(st.LastAdvised)) +
-				" tokens: your reply did not end with the section asked at the start of this turn. Do not repeat your answer.\n"
+				" tokens: no message of this turn gave the section asked at its start. Do not repeat your answer.\n"
 			if written := lastHandoff(handoffDir, st.Proposed+"-"); st.Proposed != "" && written != "" {
 				reason += "The handoff " + filepath.Join(handoffDir, written) + " is already written: do not write another file, give the section with its lines to copy for it.\n"
 			}
@@ -320,7 +325,7 @@ func runStopHook(ctx context.Context, args []string, stdin io.Reader, out io.Wri
 		// A model may end its reply with a section of its own, as the advice of an
 		// earlier turn asked: that reply already proposes a reset, so the advice
 		// is recorded, and a block would only make it give a second section.
-		if hasSection(ev.LastMessage) {
+		if client.HasSection(ev.LastMessage) {
 			_ = advisor.MarkAdvised(dir, ev.Session, st.Size, now, ev.ID)
 			return nil
 		}
@@ -339,17 +344,6 @@ func runStopHook(ctx context.Context, args []string, stdin io.Reader, out io.Wri
 	})
 	_, _ = out.Write(b)
 	return nil
-}
-
-// hasSection tells whether msg holds a Jalon section: a blockquote line that
-// starts with **Jalon**, not the name in bold within an answer.
-func hasSection(msg string) bool {
-	for line := range strings.Lines(msg) {
-		if strings.HasPrefix(strings.TrimSpace(line), "> **Jalon**") {
-			return true
-		}
-	}
-	return false
 }
 
 // handoffAsked tells whether text is the client's handoff command, alone or

@@ -5,7 +5,10 @@
 // know nothing of any client.
 package client
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // Prompt is a prompt event as the client reports it.
 type Prompt struct {
@@ -41,6 +44,21 @@ type Tail struct {
 	// person, not sent by a program; when a prompt ID was asked for, only that
 	// prompt counts.
 	Typed bool
+	// Section is true when a message of the turn held a Jalon section. It is
+	// looked for only with a prompt ID, which bounds the turn, since the model
+	// gives the section before the handoff file and so need not end with it.
+	Section bool
+}
+
+// HasSection tells whether msg holds a Jalon section: a blockquote line that
+// starts with **Jalon**, not the name in bold within an answer.
+func HasSection(msg string) bool {
+	for line := range strings.Lines(msg) {
+		if strings.HasPrefix(strings.TrimSpace(line), "> **Jalon**") {
+			return true
+		}
+	}
+	return false
 }
 
 // Stop is a stop event: the model ended its turn.
