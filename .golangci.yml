@@ -1,14 +1,22 @@
 version: "2"
 
-# The standard linters (errcheck, govet, ineffassign, staticcheck, unused).
-# The presets drop the usual noise, such as an unchecked error from a deferred
-# Close.
+# Without the tag, the e2e harness and its test are hidden from every linter.
+run:
+  build-tags:
+    - e2e
+
+# The standard linters (errcheck, govet, ineffassign, staticcheck, unused), plus
+# gosec. The presets drop the usual noise, such as an unchecked error from a
+# deferred Close.
 linters:
+  enable:
+    - gosec
   settings:
-    errcheck:
-      exclude-functions:
-        # Deferred after Begin: a no-op once the transaction is committed.
-        - (*database/sql.Tx).Rollback
+    gosec:
+      excludes:
+        # errcheck already covers unhandled errors, with the same std
+        # exclusions.
+        - G104
   exclusions:
     presets:
       - std-error-handling
@@ -18,3 +26,4 @@ linters:
       - path: _test\.go
         linters:
           - errcheck
+          - gosec

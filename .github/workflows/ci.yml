@@ -18,7 +18,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
+  # The cheap checks first, so a run that is going to fail fails fast.
+  lint-unit:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -44,31 +45,18 @@ jobs:
           go mod tidy
           git diff --exit-code go.mod go.sum
 
-      - name: Vet
-        run: go vet ./...
-
-      - name: Test
-        run: go test -race ./...
-
-  lint:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-
+      # No separate vet step: golangci-lint's govet covers it, bar the `tests`
+      # analyzer, which `go test` runs itself.
       # Pinned to a commit: a tag of a third-party action can be moved.
       - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
-          version: v2.14
+          version: v2.15.0
 
       - name: Known vulnerabilities in the code paths used
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
+
+      - name: Test
+        run: go test -race ./...
 
   # Claude Code updates an installed mod only when its version changes, so a
   # pull request that changes plugin/ must also change that version.

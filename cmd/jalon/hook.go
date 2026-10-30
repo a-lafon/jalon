@@ -643,6 +643,8 @@ func ensureHandoffFolder(root string) error {
 	if err := os.MkdirAll(filepath.Join(dir, "handoffs"), 0o700); err != nil {
 		return err
 	}
+	// #nosec G302 -- a .gitignore in the user's project is readable like any
+	// other project file.
 	f, err := os.OpenFile(filepath.Join(dir, ".gitignore"), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if errors.Is(err, os.ErrExist) {
 		return nil
