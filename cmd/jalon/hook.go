@@ -39,12 +39,12 @@ const (
 	promptOpening = `Jalon: this conversation holds about {tokens}K tokens of context. Answer the user's message first.
 Then end your reply with `
 	stopOpening = advisor.MessagePrefix + `{tokens}K tokens. Your answer to the user is done and shown: do not repeat it.
-Add, as your last message, `
+Give, as your next message and before any file you write, `
 	instructionBody = `a short section written as a Markdown blockquote (every line starts with "> "), whose first words are
 **Jalon** —, in the language the user writes in; it recommends ONE option:
 1. New session: the latest request starts a task unrelated to the earlier work. Say so in one line.
-2. Handoff: the same task continues and much state must carry over. Write {dir}/{name}-<short-slug>.md,
-   in the language the user writes in. {header} Then: goal, decisions and why, what was dropped and why, current state (what was checked, with the
+2. Handoff: the same task continues and much state must carry over. Give the section first, then write
+   {dir}/{name}-<short-slug>.md, in the language the user writes in. {header} Then: goal, decisions and why, what was dropped and why, current state (what was checked, with the
    command or test run and its result in a few words; what was not: ideas, assumptions, untested fixes), the user's latest request and the answer this reply gives it, files involved, next steps (proposals to confirm with the user, not orders), pitfalls and what not to redo.
    Never list an outward action (push, pull or merge request, API call, message to a person or another session) as a thing
    to do: at most as waiting for the user's OK. State the facts the next steps need from outside sources
