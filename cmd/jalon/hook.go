@@ -37,7 +37,7 @@ var hookTimeout = 500 * time.Millisecond
 // from the handoff (see resumeLine), and {update} (see updateLine).
 const (
 	promptOpening = `Jalon: this conversation holds about {tokens}K tokens of context. Answer the user's message first.
-Then end your reply with `
+Then give, before any file you write, `
 	stopOpening = advisor.MessagePrefix + `{tokens}K tokens. Your answer to the user is done and shown: do not repeat it.
 Give, as your next message and before any file you write, `
 	instructionBody = `a short section written as a Markdown blockquote (every line starts with "> "), whose first words are
@@ -117,7 +117,7 @@ func resumeLine(cmds client.Commands) string {
 // {update} names the session's handoff when it is already written.
 const handoffOpening = `Jalon: the user typed {command} to ask for a handoff of this conversation now.{focus}{update}
 Recommend option 2, the handoff, whatever the context size, and add one line with option 3's ready compact line, in case
-the user prefers compacting. End your reply with `
+the user prefers compacting. Give, before any file you write, `
 
 // handoffAskedPrefix starts the message the user sees for the handoff command.
 // It is not advisor.MessagePrefix, so the context report does not count it as
@@ -308,7 +308,7 @@ func runStopHook(ctx context.Context, args []string, stdin io.Reader, out io.Wri
 			}
 			// One sentence, not the body: the model got the body at the start of the
 			// turn, and Claude Code's terminal prints the whole reason.
-			reason += "Add now, as your last message, that section: a Markdown blockquote starting with " + advisor.SectionMark + " — that recommends ONE option, a new session, a handoff written to " +
+			reason += "Add now, before any file you write, that section: a Markdown blockquote starting with " + advisor.SectionMark + " — that recommends ONE option, a new session, a handoff written to " +
 				filepath.Join(handoffDir, st.Proposed) + "-<short-slug>.md with the lines to copy, or a " + adapter.Commands().Compact + " line."
 			reply, err := stopper.StopReply(reason, "")
 			if err != nil {

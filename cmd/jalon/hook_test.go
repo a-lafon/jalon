@@ -514,6 +514,16 @@ func TestHookStillAdvisesWhenTheFolderCannotBeCreated(t *testing.T) {
 	}
 }
 
+// Every opening leads into the same body, which has the model give the section
+// first and write the handoff after it.
+func TestHookOpeningsAskForTheSectionBeforeTheFile(t *testing.T) {
+	for name, opening := range map[string]string{"prompt": promptOpening, "stop": stopOpening, "handoff": handoffOpening} {
+		if !strings.Contains(opening, "before any file you write") || strings.Contains(opening, "end your reply") {
+			t.Errorf("the %s opening asks for the section at the end of the reply: %q", name, opening)
+		}
+	}
+}
+
 // A client may not show the hook's message, so the model's recommendation must
 // say where it comes from.
 func TestHookInstructionStartsTheRecommendationWithJalon(t *testing.T) {
@@ -522,7 +532,7 @@ func TestHookInstructionStartsTheRecommendationWithJalon(t *testing.T) {
 	if err := json.Unmarshal([]byte(runPrompt(t, cfg, hookInput("s1", gitRepo(t)))), &out); err != nil {
 		t.Fatal(err)
 	}
-	if ctxt := out.HookSpecificOutput.AdditionalContext; !strings.Contains(ctxt, "end your reply with a short section written as a Markdown blockquote") || !strings.Contains(ctxt, "first words are\n**Jalon** —") || !strings.Contains(ctxt, "do not repeat it in later replies") {
+	if ctxt := out.HookSpecificOutput.AdditionalContext; !strings.Contains(ctxt, "give, before any file you write, a short section written as a Markdown blockquote") || !strings.Contains(ctxt, "first words are\n**Jalon** —") || !strings.Contains(ctxt, "do not repeat it in later replies") {
 		t.Errorf("the instruction does not ask for a blockquote section starting with **Jalon** —, given once:\n%s", ctxt)
 	}
 }
@@ -1223,6 +1233,8 @@ func TestStopHookSectionMissing(t *testing.T) {
 	proposed := filepath.Join(repo, ".jalon", "handoffs", prefix) + "-<short-slug>.md"
 	if !strings.HasPrefix(out.Reason, "Jalon: reminder, context at 274K tokens: ") ||
 		!strings.Contains(out.Reason, "Do not repeat your answer") ||
+		// The section comes before the file, as the instruction of the turn said.
+		!strings.Contains(out.Reason, "Add now, before any file you write, that section") ||
 		!strings.Contains(out.Reason, "a handoff written to "+proposed) ||
 		!strings.Contains(out.Reason, "starting with **Jalon** —") ||
 		// Short: the terminal prints it, and the body was given at the start of the turn.
