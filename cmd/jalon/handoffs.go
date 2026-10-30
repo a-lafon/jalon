@@ -42,6 +42,16 @@ func runHandoffs(args []string, out io.Writer) error {
 		fmt.Fprintf(out, "No handoff in %s.\n", folder)
 		return nil
 	}
+	// A path to a handoff of another checkout resolves to nothing here, and the
+	// word match below would fall through to this project's latest one: the
+	// wrong handoff, printed in full under a warning, resumes the wrong work.
+	// shortcut: absolute paths only, the pasted-path case; widen it the day a
+	// relative path out of the project shows up.
+	if a := flags.Args(); len(a) == 1 && filepath.IsAbs(a[0]) && !slices.Contains(names, relName(folder, a[0])) {
+		if st, err := os.Stat(a[0]); err == nil && !st.IsDir() {
+			return fmt.Errorf("%s is not a handoff of %s", a[0], folder)
+		}
+	}
 	picked, matched := pickHandoff(folder, names, wd, flags.Args())
 	if !matched {
 		fmt.Fprintf(out, "No handoff matched %q: the latest one is used.\n", strings.Join(flags.Args(), " "))
@@ -133,6 +143,15 @@ func listHandoffs(folder string) ([]string, error) {
 	return names, err
 }
 
+// relName is the name p would have under folder, "" when it has none.
+func relName(folder, p string) string {
+	rel, err := filepath.Rel(folder, p)
+	if err != nil {
+		return ""
+	}
+	return filepath.ToSlash(rel)
+}
+
 // pickHandoff picks a handoff from names: the one args name by its path,
 // absolute or relative to wd or to folder; else the latest whose name or first
 // heading holds args' words, ignoring case; else the latest, and matched is
@@ -147,8 +166,8 @@ func pickHandoff(folder string, names []string, wd string, args []string) (picke
 			if !filepath.IsAbs(p) {
 				continue
 			}
-			if rel, err := filepath.Rel(folder, p); err == nil && slices.Contains(names, filepath.ToSlash(rel)) {
-				return filepath.ToSlash(rel), true
+			if rel := relName(folder, p); slices.Contains(names, rel) {
+				return rel, true
 			}
 		}
 	}
