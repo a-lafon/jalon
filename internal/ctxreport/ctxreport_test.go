@@ -303,6 +303,27 @@ func TestStopHookAdviceIsPlacedWhereItFired(t *testing.T) {
 	}
 }
 
+func TestACompactionAfterTheStopPointKeepsTheAdvice(t *testing.T) {
+	stop := Params{Advisor: params.Advisor, StaleAfterTurns: params.StaleAfterTurns, StopHook: true}
+	// The hook advised at the request of 205K and the client compacted after the
+	// span's last request, which comes later: the advice still stands, and the
+	// compaction followed it.
+	c := spanConv(50000, 100000, 190000, 205000, 240000, 260000)
+	c.Advices = []transcript.Advice{{UUID: "s", Time: t0.Add(4 * time.Minute), Turn: 1, Request: 5, Rendered: true}}
+	c.Compactions = []transcript.Compaction{{
+		UUID: "auto-a", Time: t0.Add(6 * time.Minute), Trigger: "auto", PreTokens: 260000,
+		AfterTurns: 2, AfterRequests: 5, AfterBlocks: len(c.Blocks),
+	}}
+
+	res := Simulate([]transcript.Conversation{c}, stop)
+	if len(res.Advices) != 1 || !res.Advices[0].AtStop || res.Advices[0].PromptTokens != 205000 {
+		t.Fatalf("advices = %+v, want one at the stop, at 205K", res.Advices)
+	}
+	if len(res.Resets) != 1 || !res.Resets[0].Advised {
+		t.Errorf("resets = %+v, want the compaction credited to the advice", res.Resets)
+	}
+}
+
 func TestIgnoredIsAnAdviceTheConversationOutlived(t *testing.T) {
 	// The advisor fires at turn 2 and the user goes on without resetting.
 	res := Simulate([]transcript.Conversation{conv("a", 100, 50000, 120000, 210000, 215000)}, params)
