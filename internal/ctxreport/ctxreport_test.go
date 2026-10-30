@@ -284,7 +284,7 @@ func spanConv(floor int, sizes ...int) transcript.Conversation {
 }
 
 func TestStopHookAdviceIsPlacedWhereItFired(t *testing.T) {
-	stop := Params{Advisor: params.Advisor, StaleAfterTurns: params.StaleAfterTurns, StopHook: true}
+	stop := Params{Advisor: params.Advisor, StaleAfterTurns: params.StaleAfterTurns, StopHook: true, InForce: true}
 	// The hook advised at the request of 205K, blocked once, and the model went
 	// on under the same prompt to 260K. Two requests later the transcript holds
 	// the advice, as the reader records it.
@@ -303,8 +303,45 @@ func TestStopHookAdviceIsPlacedWhereItFired(t *testing.T) {
 	}
 }
 
+func TestAnotherThresholdLetsTheAdvisorPlaceTheAdvice(t *testing.T) {
+	// The same conversation replayed at thresholds the hooks did not run with:
+	// the advisor may not fire where the real hook did, so where it fired says
+	// nothing and the span is evaluated at its end.
+	other := Params{Advisor: params.Advisor, StaleAfterTurns: params.StaleAfterTurns, StopHook: true}
+	c := spanConv(50000, 100000, 190000, 205000, 240000, 260000)
+	c.Advices = []transcript.Advice{{UUID: "s", Time: t0.Add(4 * time.Minute), Turn: 1, Request: 5, Rendered: true}}
+
+	res := Simulate([]transcript.Conversation{c}, other)
+	if len(res.Advices) != 1 || res.Advices[0].PromptTokens != 240000 {
+		t.Errorf("advices = %+v, want one at the end of the span, at 240K", res.Advices)
+	}
+}
+
+func TestStopHookAdviceOnTheSpansFirstRequest(t *testing.T) {
+	stop := Params{Advisor: params.Advisor, StaleAfterTurns: params.StaleAfterTurns, StopHook: true, InForce: true}
+	// A long first turn, then a prompt the prompt hook does not act on: the hook
+	// advised at the span's first request, on the size of the request before it.
+	c := transcript.Conversation{File: "a", Human: 1}
+	c.Blocks = append(c.Blocks, transcript.Block{Turn: 0, Bytes: 10, Request: 0})
+	c.Turns = append(c.Turns, transcript.Turn{Time: t0, PromptTokens: 50000, Block: 0, Request: 0, Advisable: true})
+	c.Requests = append(c.Requests, transcript.Request{Time: t0, Turn: 0, PromptTokens: 50000})
+	c.Requests = append(c.Requests, transcript.Request{Time: t0.Add(time.Minute), Turn: 0, PromptTokens: 205000})
+	c.Blocks = append(c.Blocks, transcript.Block{Turn: 0, Bytes: 10, Request: 1})
+	c.Turns = append(c.Turns, transcript.Turn{Time: t0.Add(2 * time.Minute), PromptTokens: 210000, Block: len(c.Blocks), Request: 2, Human: true})
+	c.Blocks = append(c.Blocks, transcript.Block{Turn: 1, Bytes: 10, Request: 2})
+	c.Requests = append(c.Requests, transcript.Request{Time: t0.Add(2 * time.Minute), Turn: 1, PromptTokens: 210000})
+	c.Requests = append(c.Requests, transcript.Request{Time: t0.Add(3 * time.Minute), Turn: 1, PromptTokens: 240000})
+	c.Blocks = append(c.Blocks, transcript.Block{Turn: 1, Bytes: 10, Request: 3})
+	c.Advices = []transcript.Advice{{UUID: "s", Time: t0.Add(3 * time.Minute), Turn: 1, Request: 3, Rendered: true}}
+
+	res := Simulate([]transcript.Conversation{c}, stop)
+	if len(res.Advices) != 1 || res.Advices[0].Request != 2 || res.Advices[0].PromptTokens != 205000 {
+		t.Errorf("advices = %+v, want one at request 2, at 205K", res.Advices)
+	}
+}
+
 func TestACompactionAfterTheStopPointKeepsTheAdvice(t *testing.T) {
-	stop := Params{Advisor: params.Advisor, StaleAfterTurns: params.StaleAfterTurns, StopHook: true}
+	stop := Params{Advisor: params.Advisor, StaleAfterTurns: params.StaleAfterTurns, StopHook: true, InForce: true}
 	// The hook advised at the request of 205K and the client compacted after the
 	// span's last request, which comes later: the advice still stands, and the
 	// compaction followed it.
