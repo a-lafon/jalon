@@ -527,6 +527,27 @@ func TestHookInstructionStartsTheRecommendationWithJalon(t *testing.T) {
 	}
 }
 
+// A fact written in one generation must still be true, or visibly no longer
+// true, in the next: the clauses that tie each claim to the scope it holds on.
+func TestHookInstructionTiesTheHandoffToItsScope(t *testing.T) {
+	useHome(t)
+	repo, cfg := gitRepo(t), configWith(t, thresholdsConfig)
+	path := writeHandoff(t, repo, "2026-10-09/1358-r4sefxw4-advisor.md")
+	ctxt := adviseAt(t, cfg, "s2", repo, "@"+path+" resume from it", 212_000, hookNow)
+	for _, want := range []string{
+		"the branch, worktree and base commit read from the repository now, never copied from the handoff it follows",
+		"each naming the branch, commit or directory it was verified on",
+		"one inherited from the handoff it follows is repeated only after checking it still holds",
+		"every item the handoff it follows left open and this one does not carry, one line each: done, abandoned or moot, and why",
+		"waiting for the user's OK, repeating there the constraints on what it may say",
+		"a path outside the project, a scratchpad, a container or a port given with the fact it establishes and how to obtain it again",
+	} {
+		if !strings.Contains(ctxt, want) {
+			t.Errorf("the instruction does not ask for %q:\n%s", want, ctxt)
+		}
+	}
+}
+
 func TestHookCreatesThePrivateFolders(t *testing.T) {
 	_, cfg := hookState(t, "s1", 300_000)
 	repo := gitRepo(t)
