@@ -263,10 +263,12 @@ func simulateOne(res *Result, c transcript.Conversation, cuts []cut, p Params) {
 		if !p.StopHook || !t.Human || advised || end-t.Request < 2 {
 			continue
 		}
-		// A compaction inside the turn comes first. The hook reads the request
-		// before the last: the transcript does not hold the last one yet.
-		applyCompactions(i+1, end-1)
-		if last := stopAt(c, t.Request, end); last-1 >= segReq {
+		// A compaction inside the turn comes first, up to where the hook acts: a
+		// later one belongs to the next turn. The hook reads the request before
+		// the last: the transcript does not hold the last one yet.
+		last := stopAt(c, t.Request, end)
+		applyCompactions(i+1, last)
+		if last-1 >= segReq {
 			blocks := sort.Search(len(c.Blocks), func(k int) bool { return c.Blocks[k].Request > last })
 			evaluate(i, last, c.Requests[last-1].PromptTokens, blocks, c.Requests[last].Time, true)
 		}
