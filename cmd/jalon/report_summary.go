@@ -85,7 +85,13 @@ func printSummary(out io.Writer, title string, im ctxreport.Impact, sim ctxrepor
 		}
 		fmt.Fprintln(out, " (Simulated advice before each reset)")
 	}
-	fmt.Fprintf(out, "  Ignored: %d of %s were followed by no reset (Advices no reset followed)\n", len(sim.Unfollowed), cli.Plural(len(sim.Advices), "advice"))
+	ignored, ended := unfollowedSplit(sim.Unfollowed)
+	fmt.Fprintf(out, "  Ignored: %d of %s were followed by no reset although the conversation went on; %d more ended at the advice (Advices no reset followed)\n",
+		ignored, cli.Plural(len(sim.Advices), "advice"), ended)
+	if missed := missedAdvices(im); missed > 0 {
+		fmt.Fprintf(out, "  Never shown: %d of %s the hook gave never got their Jalon section, so you never saw them; no reset is credited to them (Impact)\n",
+			missed, cli.Plural(len(im.Advices), "advice"))
+	}
 
 	subShare := shareOf(subs.PastRead, subs.Read)
 	if len(subs.Runs) > 0 {
@@ -96,11 +102,11 @@ func printSummary(out io.Writer, title string, im ctxreport.Impact, sim ctxrepor
 	_, floorRead, read := floorStats(sim.Floors)
 	startShare := shareOf(floorRead, read)
 	if len(projects) > 0 {
-		fmt.Fprintf(out, "  Starting size: %s of the prompt tokens read, which no reset removes; largest p50 %s in %s (Starting size)\n",
-			cli.PercentOf(startShare), cli.TokensK(projects[0].d.P50), projects[0].name)
+		fmt.Fprintf(out, "  Starting size: %s of the prompt tokens read by the conversations that started in the window, which no reset removes; most of it in %s, %s there (p50 %s) (Starting size)\n",
+			cli.PercentOf(startShare), projects[0].name, tokensM(projects[0].base), cli.TokensK(projects[0].d.P50))
 	}
 	if len(rs.Cold) > 0 {
-		fmt.Fprintf(out, "  Cold returns: %s after a pause found the cache expired and sent %s of the prompt tokens without reading them from it (Returns after a pause)\n",
+		fmt.Fprintf(out, "  Cold returns: %s after a pause found the cache expired and sent %s of the prompt tokens read in the window without reading them from it (Returns after a pause)\n",
 			cli.Plural(len(rs.Cold), "typed prompt"), smallPercent(shareOf(rs.NotRead(), rs.PromptRead)))
 	}
 
@@ -137,8 +143,8 @@ func printSummary(out io.Writer, title string, im ctxreport.Impact, sim ctxrepor
 			subs.Past, cli.Thousands(int64(adviseTokens)), cli.PercentOf(subShare)))
 	}
 	if len(projects) > 0 && startShare >= heavyShare {
-		todo = append(todo, fmt.Sprintf("Trim what conversations load at start in %s (MCP servers, CLAUDE.md, skills): they start at %s at p50, and every request reads it again.",
-			projects[0].name, cli.TokensK(projects[0].d.P50)))
+		todo = append(todo, fmt.Sprintf("Trim what conversations load at start in %s (MCP servers, CLAUDE.md, skills): %s of its prompt tokens read was this starting size, %s at p50, and every request reads it again.",
+			projects[0].name, tokensM(projects[0].base), cli.TokensK(projects[0].d.P50)))
 	}
 	switch {
 	case len(todo) > 0:
@@ -151,6 +157,31 @@ func printSummary(out io.Writer, title string, im ctxreport.Impact, sim ctxrepor
 	for i, t := range todo {
 		fmt.Fprintf(out, "    %d. %s\n", i+1, t)
 	}
+}
+
+// unfollowedSplit counts the advices no reset followed apart: those the
+// conversation went on past, which were ignored, and those it ended at.
+func unfollowedSplit(unfollowed []ctxreport.Advice) (ignored, ended int) {
+	for _, a := range unfollowed {
+		if a.Outlived {
+			ignored++
+		} else {
+			ended++
+		}
+	}
+	return ignored, ended
+}
+
+// missedAdvices is the number of advices the hook gave whose turn did not end
+// with the section: nobody saw them.
+func missedAdvices(im ctxreport.Impact) int {
+	n := 0
+	for _, a := range im.Advices {
+		if !a.Rendered {
+			n++
+		}
+	}
+	return n
 }
 
 // tokensKM formats a token count in thousands below a million, in millions

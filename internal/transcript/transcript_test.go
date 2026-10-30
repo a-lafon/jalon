@@ -570,6 +570,54 @@ func sidechain(line string) string {
 	return strings.Replace(line, `{"type"`, `{"isSidechain":true,"type"`, 1)
 }
 
+// assistantSaying is an assistant request whose message is text.
+func assistantSaying(ts, id, text string) string {
+	return strings.Replace(assistant(ts, id, 1, 200000, 0, 5), `"text":"x"`, fmt.Sprintf(`"text":%q`, text), 1)
+}
+
+func TestAdviceRenderedOrNot(t *testing.T) {
+	lines := []string{
+		humanText("2026-10-06T08:00:00Z", "first"),
+		advice("a1", "2026-10-06T08:00:01Z", "Jalon: context at 296K tokens, a reset proposal follows the answer."),
+		assistantSaying("2026-10-06T08:00:02Z", "m1", "Done.\n\n> **Jalon** — Compact: keep the plan."),
+		humanText("2026-10-06T08:00:03Z", "second"),
+		advice("a2", "2026-10-06T08:00:04Z", "Jalon: context at 310K tokens, a reset proposal follows the answer."),
+		// The name in bold within an answer is not the section.
+		assistantSaying("2026-10-06T08:00:05Z", "m2", "Done: **Jalon** now counts the floor."),
+		// A later advice gets its own section: the one above stays missed.
+		humanText("2026-10-06T08:00:06Z", "third"),
+		advice("a3", "2026-10-06T08:00:07Z", "Jalon: context at 320K tokens, a reset proposal follows the answer."),
+		assistantSaying("2026-10-06T08:00:08Z", "m3", "> **Jalon** — Handoff: write it."),
+	}
+	c, err := NewReader().Read("/p/s1.jsonl", strings.NewReader(strings.Join(lines, "\n")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.Advices) != 3 || !c.Advices[0].Rendered || c.Advices[1].Rendered || !c.Advices[2].Rendered {
+		t.Errorf("advices = %+v, want the first and third rendered, the second not", c.Advices)
+	}
+}
+
+func TestAdviceRenderedInTheTurnAfterIt(t *testing.T) {
+	// A prompt typed while the model answers is recorded as its own turn before
+	// the advice, so the reply holding the section comes in the next turn.
+	lines := []string{
+		humanText("2026-10-06T08:00:00Z", "first"),
+		assistant("2026-10-06T08:00:01Z", "m1", 1, 290000, 0, 5),
+		userText("2026-10-06T08:00:02Z", "and the tests?"),
+		assistant("2026-10-06T08:00:03Z", "m2", 1, 295000, 0, 5),
+		advice("a1", "2026-10-06T08:00:04Z", "Jalon: context at 296K tokens, a reset proposal follows the answer."),
+		assistantSaying("2026-10-06T08:00:05Z", "m3", "Fait.\n\n> **Jalon** — Handoff: write it."),
+	}
+	c, err := NewReader().Read("/p/s1.jsonl", strings.NewReader(strings.Join(lines, "\n")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.Advices) != 1 || !c.Advices[0].Rendered {
+		t.Errorf("advices = %+v, want the advice shown", c.Advices)
+	}
+}
+
 func TestAskedHandoffIsNotAnAdvice(t *testing.T) {
 	lines := []string{
 		humanText("2026-10-06T08:00:00Z", "/jalon-handoff"),

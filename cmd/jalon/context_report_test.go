@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/a-lafon/jalon/internal/advisor"
 	"github.com/a-lafon/jalon/internal/ctxreport"
 )
 
@@ -329,7 +330,9 @@ func TestGoldenImpact(t *testing.T) {
 	at := func(h, m int) time.Time { return time.Date(2026, 10, 9, h, m, 0, 0, time.Local) }
 	im := ctxreport.Impact{
 		Advices: []ctxreport.GivenAdvice{
-			{Time: at(13, 50), FollowedBy: ctxreport.KindHandoff, Lead: 1},
+			{Time: at(13, 50), FollowedBy: ctxreport.KindHandoff, Lead: 1, Rendered: true, Version: "0.5.0"},
+			// Never shown: the turn did not end with the section, and the version
+			// that gave it is not known.
 			{Time: at(15, 0)},
 		},
 		Resets: []ctxreport.Reset{
@@ -359,9 +362,11 @@ func TestContextReportImpactFromTranscripts(t *testing.T) {
 	path := "/repo/.jalon/handoffs/2026-10-09-1402-abcd1234-x.md"
 	advice := fmt.Sprintf(`{"type":"attachment","uuid":"adv1","timestamp":%q,"attachment":{"type":"hook_system_message","hookEvent":"UserPromptSubmit","content":"Jalon: context at 311K tokens, a reset proposal follows the answer."}}`, ts(at(2)))
 	write := fmt.Sprintf(`{"type":"assistant","timestamp":%q,"message":{"id":"w1","content":[{"type":"tool_use","name":"Write","input":{"file_path":%q}}],"usage":{"input_tokens":5,"cache_read_input_tokens":311000}}}`, ts(at(5)), path)
+	// The advised turn ends with the section, so the advice was shown.
+	section := strings.Replace(tAssistant(at(4), "m2", 300_000), `"text":"x"`, `"text":"Fait.\n\n> **Jalon** — Handoff"`, 1)
 	writeSession(t, dir, "parent.jsonl",
 		tUser(at(0)), tAssistant(at(1), "m1", 250_000),
-		advice, tUser(at(3)), tAssistant(at(4), "m2", 300_000), write,
+		advice, tUser(at(3)), section, write,
 	)
 	resume := fmt.Sprintf(`{"type":"user","timestamp":%q,"origin":{"kind":"human"},"message":{"content":"@%s reprends à partir de ce handoff"}}`, ts(at(10)), path)
 	lines := []string{resume, tAssistant(at(11), "r1", 45_000)}
@@ -369,6 +374,13 @@ func TestContextReportImpactFromTranscripts(t *testing.T) {
 		lines = append(lines, tUser(at(12+2*i)), tAssistant(at(13+2*i), fmt.Sprintf("r%d", i+2), 50_000))
 	}
 	writeSession(t, dir, "resumed.jsonl", lines...)
+	// The version that advised is in the session state, not in the transcript.
+	t.Setenv("HOME", t.TempDir())
+	t.Cleanup(func(v string) func() { return func() { advisor.Version = v } }(advisor.Version))
+	advisor.Version = "9.9.9"
+	if err := advisor.MarkAdvised(filepath.Join(os.Getenv("HOME"), ".jalon", "sessions"), "parent", 311_000, now, "p1"); err != nil {
+		t.Fatal(err)
+	}
 
 	var out bytes.Buffer
 	if err := runContextReport(context.Background(), []string{"-config", configPath, "-since", "3h", "-transcripts", dir}, &out); err != nil {
@@ -377,7 +389,8 @@ func TestContextReportImpactFromTranscripts(t *testing.T) {
 	report := out.String()
 	// Before is the parent's last request, 311K; after 45K; 4 requests follow.
 	for _, want := range []string{
-		"advice given 1: followed by a compaction 0, by a handoff 1, nothing seen 0; lead p50 0 turns",
+		"advice given 1: followed by a compaction 0, by a handoff 1, nothing seen 0; lead p50 0 turns; never shown 0",
+		"  given by version 9.9.9 1\n",
 		"resets 1 (1 advised, 0 unprompted); handoff resumes not linked 0",
 		"not re-read thanks to resets about 1.1M prompt tokens",
 		"of which after advice about 1.1M",
@@ -449,7 +462,7 @@ func TestContextReportColdReturns(t *testing.T) {
 	for _, want := range []string{
 		"\nReturns after a pause (transcripts)\n  1 typed prompt came more than 5m after the previous request and read less than half of it from the cache: 0.3M prompt tokens not read from it, 44% of the 0.7M read in this period; pause p50 40m\n",
 		"  1 came with the context +200,000 tokens or more above its starting size; 0 after a handoff was written in the conversation\n",
-		"  Cold returns: 1 typed prompt after a pause found the cache expired and sent 44% of the prompt tokens without reading them from it (Returns after a pause)\n",
+		"  Cold returns: 1 typed prompt after a pause found the cache expired and sent 44% of the prompt tokens read in the window without reading them from it (Returns after a pause)\n",
 	} {
 		if !strings.Contains(report, want) {
 			t.Errorf("missing %q in:\n%s", want, report)
@@ -511,7 +524,8 @@ func TestStartingSizeByProject(t *testing.T) {
 func TestStartingSizeListsTenProjects(t *testing.T) {
 	var floors []ctxreport.Floor
 	for i := range 12 {
-		floors = append(floors, floor(fmt.Sprintf("/t/p%02d", i), "", i, 10_000*(i+1), 1, 1))
+		// The starting size accounts for all the prompt tokens each conversation read.
+		floors = append(floors, floor(fmt.Sprintf("/t/p%02d", i), "", i, 10_000*(i+1), int64(10_000*(i+1)), int64(10_000*(i+1))))
 	}
 	var out bytes.Buffer
 	printStartingSize(&out, floors)
@@ -519,8 +533,8 @@ func TestStartingSizeListsTenProjects(t *testing.T) {
 	if strings.Count(report, " 1 conversation ") != 10 || !strings.Contains(report, "    2 more projects not shown\n") {
 		t.Errorf("want the 10 largest and 2 more:\n%s", report)
 	}
-	if !strings.Contains(report, "    p11  1 conversation  p50 120K") || strings.Contains(report, "p00") || strings.Contains(report, "p01") {
-		t.Errorf("want the largest p50 first and the two smallest left out:\n%s", report)
+	if !strings.Contains(report, "    p11  1 conversation  120K as starting size  p50 120K") || strings.Contains(report, "p00") || strings.Contains(report, "p01") {
+		t.Errorf("want the most tokens as starting size first and the two smallest left out:\n%s", report)
 	}
 }
 
@@ -601,7 +615,7 @@ func TestContextReportReadsOneProjectFolder(t *testing.T) {
 		t.Fatal(err)
 	}
 	// No entry has a cwd: the project is named by its folder.
-	for _, want := range []string{"1 files", "1 conversations: p10 40K", "    -project  1 conversation  p50 40K  max 40K  100%"} {
+	for _, want := range []string{"1 files", "1 conversations: p10 40K", "    -project  1 conversation  40K as starting size  p50 40K  max 40K  100%"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("report does not contain %q:\n%s", want, out.String())
 		}

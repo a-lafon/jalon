@@ -79,6 +79,16 @@ func TestMarkAdvisedKeepsTheSizeAndRecordKeepsTheStep(t *testing.T) {
 	}
 }
 
+func TestMarkAdvisedRecordsTheVersion(t *testing.T) {
+	dir := t.TempDir()
+	defer func(v string) { Version = v }(Version)
+	Version = "0.6.0"
+	MarkAdvised(dir, "s", 210_000, t0, "")
+	if got, _ := Load(dir, "s"); got.Version != "0.6.0" {
+		t.Errorf("state = %+v, want the version that advised", got)
+	}
+}
+
 func TestSetHandoffKeepsTheRestAndRecordKeepsTheHandoff(t *testing.T) {
 	dir := t.TempDir()
 	Record(dir, "s", 210_000, t0, "", false)

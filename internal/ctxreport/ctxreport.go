@@ -31,6 +31,10 @@ type Advice struct {
 	Turn, Request int
 	AtStop        bool
 	PromptTokens  int
+	// Outlived is set when a further user turn followed the advice in the
+	// conversation: an advice no reset followed is ignored only then, otherwise
+	// the conversation ended at it.
+	Outlived bool
 	// StaleShare is the share of the context bytes taken by tool results older
 	// than StaleAfterTurns user turns.
 	StaleShare float64
@@ -228,7 +232,7 @@ func simulateOne(res *Result, c transcript.Conversation, cuts []cut, p Params) {
 		}
 		context := c.Blocks[min(segBlock, end):min(end, len(c.Blocks))]
 		adv := Advice{
-			File: c.File, Time: at, Turn: i, Request: req, AtStop: atStop, PromptTokens: size,
+			File: c.File, Time: at, Turn: i, Request: req, AtStop: atStop, PromptTokens: size, Outlived: i+1 < len(c.Turns),
 			StaleShare: staleShare(context, func(b transcript.Block) int { return i - b.Turn }, p.StaleAfterTurns),
 		}
 		for _, age := range RequestAges {
@@ -262,13 +266,26 @@ func simulateOne(res *Result, c transcript.Conversation, cuts []cut, p Params) {
 		// A compaction inside the turn comes first. The hook reads the request
 		// before the last: the transcript does not hold the last one yet.
 		applyCompactions(i+1, end-1)
-		if last := end - 1; last-1 >= segReq {
+		if last := stopAt(c, t.Request, end); last-1 >= segReq {
 			blocks := sort.Search(len(c.Blocks), func(k int) bool { return c.Blocks[k].Request > last })
 			evaluate(i, last, c.Requests[last-1].PromptTokens, blocks, c.Requests[last].Time, true)
 		}
 	}
 	applyCompactions(len(c.Turns), len(c.Requests))
 	closeSegment(nil)
+}
+
+// stopAt is the request the stop hook acts on in the prompt span [first, end):
+// the span's last request, or, when the hook advised inside the span, the one
+// it advised at. The hook blocks once, so the model went on under the same
+// prompt and the span grew past the size the hook saw.
+func stopAt(c transcript.Conversation, first, end int) int {
+	for _, a := range c.Advices {
+		if a.Request-1 > first && a.Request-1 < end-1 {
+			return a.Request - 1
+		}
+	}
+	return end - 1
 }
 
 // resetResult says what the advisor would have said before the reset ct, from

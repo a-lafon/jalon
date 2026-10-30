@@ -25,9 +25,10 @@ func shifted(c transcript.Conversation, d time.Duration) transcript.Conversation
 	return c
 }
 
-// advise records an advice given at turn i of c, as the reader would.
+// advise records an advice given at turn i of c, as the reader would, whose
+// turn ended with the section the advice asked for.
 func advise(c *transcript.Conversation, i int) {
-	c.Advices = append(c.Advices, transcript.Advice{UUID: c.File + string(rune('a'+i)), Time: c.Turns[i].Time.Add(-time.Second), Turn: i, Request: c.Turns[i].Request})
+	c.Advices = append(c.Advices, transcript.Advice{UUID: c.File + string(rune('a'+i)), Time: c.Turns[i].Time.Add(-time.Second), Turn: i, Request: c.Turns[i].Request, Rendered: true})
 }
 
 // resumed is a conversation that starts at at by resuming from path, one hour
@@ -83,6 +84,21 @@ func TestAdviceNotFollowed(t *testing.T) {
 	}
 	if len(im.Resets) != 1 || !im.Resets[0].Advised || im.Resets[0].Lead != 1 {
 		t.Errorf("resets = %+v", im.Resets)
+	}
+}
+
+// TestAdviceNeverShown checks the worst case of the audit: the handoff was
+// written, but no message of the turn held the section, so nobody saw the
+// advice and the reset that followed is not its doing.
+func TestAdviceNeverShown(t *testing.T) {
+	p := advisedParent()
+	p.Advices[0].Rendered = false
+	im := Impacts([]transcript.Conversation{p, resumed("r", handoffPath, t0.Add(3*time.Hour), 45000)})
+	if len(im.Advices) != 1 || im.Advices[0].Rendered || im.Advices[0].FollowedBy != "" {
+		t.Errorf("advices = %+v, want one missed advice", im.Advices)
+	}
+	if len(im.Resets) != 1 || im.Resets[0].Advised {
+		t.Errorf("resets = %+v, want the handoff counted as unprompted", im.Resets)
 	}
 }
 

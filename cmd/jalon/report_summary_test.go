@@ -18,6 +18,8 @@ func TestGoldenSummary(t *testing.T) {
 			{Kind: ctxreport.KindHandoff, Time: at(12, 10), NotReRead: 30_000_000, Advised: true},
 			{Kind: ctxreport.KindCompaction, Time: at(13, 10), NotReRead: 10_000_000},
 		},
+		// One advice was shown, one never was.
+		Advices:    []ctxreport.GivenAdvice{{Time: at(12, 9), FollowedBy: ctxreport.KindHandoff, Rendered: true}, {Time: at(13, 9)}},
 		PromptRead: 60_000_000,
 	}
 	sim := ctxreport.Result{
@@ -31,8 +33,9 @@ func TestGoldenSummary(t *testing.T) {
 			{Kind: ctxreport.KindHandoff, Time: at(14, 12), File: "/t/b.jsonl", Advised: true, Lead: 4, Beyond: 300_000},
 			{Kind: ctxreport.KindCompaction, Time: at(15, 10), File: "/t/c.jsonl"},
 		},
-		Advices:    make([]ctxreport.Advice, 9),
-		Unfollowed: make([]ctxreport.Advice, 2),
+		Advices: make([]ctxreport.Advice, 9),
+		// One the conversation went on past, one it ended at.
+		Unfollowed: []ctxreport.Advice{{Outlived: true}, {}},
 		Floors: []ctxreport.Floor{
 			floor("/t/-home-me-alpha", "~/alpha", 0, 55_000, 10_000_000, 4_000_000),
 			floor("/t/-home-me-beta", "~/beta", 1, 40_000, 10_000_000, 1_000_000),

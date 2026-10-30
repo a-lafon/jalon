@@ -48,6 +48,12 @@ type GivenAdvice struct {
 	// FollowedBy is the kind of the reset that followed it, "" when none was seen.
 	FollowedBy string
 	Lead       int
+	// Rendered is set when the turn the advice fired on ended with the
+	// recommendation section: when it is not, nobody saw the advice, so no reset
+	// is linked to it.
+	Rendered bool
+	// Version is the Jalon version that gave it, "" when it is not known.
+	Version string
 }
 
 // Impact is what the advice given and the resets did, in conversations a
@@ -171,7 +177,12 @@ func Impacts(convs []transcript.Conversation) Impact {
 			continue
 		}
 		for k, a := range c.Advices {
-			g := GivenAdvice{File: c.File, Time: a.Time}
+			g := GivenAdvice{File: c.File, Time: a.Time, Rendered: a.Rendered}
+			if !a.Rendered {
+				// The user never saw it: whatever reset followed, it did not follow it.
+				im.Advices = append(im.Advices, g)
+				continue
+			}
 			for i := range rs {
 				r := &rs[i]
 				if r.from != ci || r.sameAs >= 0 || !r.Time.After(a.Time) {
