@@ -37,6 +37,20 @@ Its one allowed check is a single `git rev-parse` of the branch, worktree and co
 
 `/jalon-handoff [what to stress]` asks for a handoff now, at any size, for example before a pause or at the end of a step. Jalon's prompt hook sees the command and gives the model the advice's own instruction, with the handoff's path and first lines, so it is written as an advised one would be, in the same thread; the model recommends the handoff and adds a `/compact` line in case you prefer compacting. When the conversation already wrote its handoff, at an advice or an earlier `/jalon-handoff`, even before a compaction, the model updates that file in place instead of writing a second one. It counts as an advice for what follows: the stop hook reminds once if the section is missing, the write-back note keeps the handoff up to date, and the next advice comes one step later. The context report does not count it as an advice. Without Jalon's hooks, the command says so and writes nothing.
 
+## Three of them to read
+
+A thread of three handoffs is published under [`docs/examples/handoffs/`](examples/handoffs/2026-11-01/). They were generated with `advise_tokens` lowered to 15K on a throwaway project built for the purpose: a URL shortener served over HTTP in Python, standard library only, whose storage layer still lived in module-level globals. The three sessions decide where it should live, build it, and then test what the first two took on trust. Each handoff was written by the session's own model, not by hand; only the paths and the session IDs were replaced.
+
+| Handoff | Size | What the session that resumed it did not rediscover |
+|---|---|---|
+| [Where the storage layer lives](examples/handoffs/2026-11-01/1908-zqru1rux-storage-layer-decision.md) | 12 KB | The decision and the measurements behind it: that base62 order and text order disagree, 84 inversions in the first 4999 codes, so sorting codes as text would duplicate about 2800 of them; why no fsync; what each of five rejected options costs. |
+| [The storage layer, implemented](examples/handoffs/2026-11-01/1915-zqru1rux-store-implemented.md) | 9 KB | What landed in each of six files, the five new tests and what each one locks in, every test run with its result including the intended red window between two of the edits, and the one shutdown path the session could not verify. |
+| [The shutdown path, verified and fixed](examples/handoffs/2026-11-01/1920-zqru1rux-shutdown-verified.md) | 10 KB | Nothing resumed this one; it carries the experiment that withdraws a pitfall the handoff above it had recorded, and a silent data-loss bug found in the shutdown it was sent to check. |
+
+The second one resumed with `/jalon-resume` and its path, three runs with Claude Opus 5 in `claude -p` in the project: two commands every time, `jalon handoffs` and the one `git rev-parse` the resume is allowed, then the summary and the wait. $0.345, $0.351 and $0.348 a run, which covers reading the handoff and its parent, 22 KB together. Each run took one more tool call than two, because the first attempt ran outside the project directory and was repeated with a `cd`. Three runs of one handoff with one model: a hint, not a proof.
+
+A handoff can also carry a line that has stopped being true: it is written once, and the work goes on. The [third example](examples/handoffs/2026-11-01/1920-zqru1rux-shutdown-verified.md) withdraws one from the second, which had recorded as a pitfall that a signal could not be delivered to a background process in that environment; it could, and the check the second session skipped because of it is the one that found the bug. Whether the three published here carry another such line was not checked.
+
 ## Threads
 
 Threads link handoffs that continue one another. Jalon spots a resume from the handoff's path in the first prompt you type in a session, and a second handoff in the same session from the name it proposed at the last advice. A path in any later prompt of the session changes nothing.

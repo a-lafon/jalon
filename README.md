@@ -31,7 +31,7 @@ In a terminal you also get a one-line notice, and the status line shows a pole w
 
 *A real Claude Code session, with `advise_tokens` lowered to 15K so the pole fills in a few prompts.*
 
-See [how it works](docs/how-it-works.md) and [handoffs](docs/handoffs.md).
+See [how it works](docs/how-it-works.md) and [handoffs](docs/handoffs.md), with [three handoffs to read](docs/handoffs.md#three-of-them-to-read).
 
 ## How Jalon differs
 
