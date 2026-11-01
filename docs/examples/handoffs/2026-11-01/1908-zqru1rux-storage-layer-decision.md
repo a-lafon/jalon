@@ -1,4 +1,4 @@
-Session: <session ID>
+Session: 77cb0379-7d54-493a-8c43-a987e27a85eb
 
 # urlshort: the storage layer decision
 

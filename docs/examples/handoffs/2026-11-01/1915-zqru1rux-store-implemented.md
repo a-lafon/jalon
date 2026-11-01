@@ -1,5 +1,5 @@
 Follows: 2026-11-01/1908-zqru1rux-storage-layer-decision.md
-Session: <session ID>
+Session: 7dd7a04d-7a0b-4124-bb2e-e23ed72a5c3b
 
 # urlshort: the storage layer, implemented
 

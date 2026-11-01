@@ -39,7 +39,7 @@ Its one allowed check is a single `git rev-parse` of the branch, worktree and co
 
 ## Three of them to read
 
-A thread of three handoffs is published under [`docs/examples/handoffs/`](examples/handoffs/2026-11-01/). They were generated with `advise_tokens` lowered to 15K on a throwaway project built for the purpose: a URL shortener served over HTTP in Python, standard library only, whose storage layer still lived in module-level globals. The three sessions decide where it should live, build it, and then test what the first two took on trust. Each handoff was written by the session's own model, not by hand; only the paths and the session IDs were replaced.
+A thread of three handoffs is published under [`docs/examples/handoffs/`](examples/handoffs/2026-11-01/). They were generated with `advise_tokens` lowered to 15K on a throwaway project built for the purpose: a URL shortener served over HTTP in Python, standard library only, whose storage layer still lived in module-level globals. The three sessions decide where it should live, build it, and then test what the first two took on trust. Each handoff was written by the session's own model, not by hand; only the absolute paths were replaced.
 
 | Handoff | Size | What the session that resumed it did not rediscover |
 |---|---|---|

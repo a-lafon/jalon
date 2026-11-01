@@ -1,5 +1,5 @@
 Follows: 2026-11-01/1915-zqru1rux-store-implemented.md
-Session: <session ID>
+Session: d3e314c8-defa-4a56-9633-6a2ab4bc2ca1
 
 # urlshort: the shutdown path, verified and fixed
 
