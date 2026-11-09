@@ -356,8 +356,10 @@ func runStopHook(ctx context.Context, args []string, stdin io.Reader, out io.Wri
 			if advisor.HasSection(ev.LastMessage) {
 				return nil
 			}
-			// After a compaction during the turn, the advice is moot.
-			if advisor.Compacted(st.LastAdvised, adapter.ReadTail(ev.Prompt, "", false, "").Size) {
+			// After a compaction during the turn, the advice is moot: the boundary
+			// shows it even when the work since has regrown the context past the
+			// size test.
+			if t := adapter.ReadTail(ev.Prompt, "", false, st.Prompt); t.Compacted || advisor.Compacted(st.LastAdvised, t.Size) {
 				return nil
 			}
 			// The handoff file is written after the section, so the turn need not

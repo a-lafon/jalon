@@ -1399,6 +1399,17 @@ func TestStopHookNoReminderAfterACompaction(t *testing.T) {
 	}
 }
 
+// The work of the turn regrew the context past half of what was advised: the
+// size test alone no longer sees the compaction, and the reminder would ask
+// for a section about a context that is gone.
+func TestStopHookNoReminderAfterACompactionTheWorkRegrewFrom(t *testing.T) {
+	repo, cfg, _ := advisedAt1748(t)
+	appendTranscript(t, "s1", `{"type":"system","subtype":"compact_boundary","compactMetadata":{"trigger":"manual","postTokens":90000}}`+"\n", assistantLine(150_000))
+	if got := runStop(t, cfg, stopInput("s1", "p1", repo, "Le fichier de reprise est écrit.", false)); got != "" {
+		t.Errorf("output = %q, want nothing", got)
+	}
+}
+
 func TestStopHookCrossedDuringTheTurn(t *testing.T) {
 	dir := useHome(t)
 	cfg := configWith(t, "context:\n  advise_tokens: 200000\n  advise_step_tokens: 150000\n")
