@@ -69,6 +69,7 @@ When the stop hook makes the model go on, the terminal shows what it asked the m
 | `/jalon-resume [path or words]` | Resumes from this project's latest handoff, or the one named, rather than `@` and its path. |
 | `/jalon-recap [path or words]` | Sums up a whole thread of handoffs, back to the first. |
 | `/jalon-handoff [what to stress]` | Writes a handoff now, before the advice comes. |
+| `/jalon-advise` | Gives the reset advice now, at any size: a new session, a handoff or a compact, whichever the conversation calls for. |
 | `/jalon-report [flags]` | Runs `jalon context-report -summary` and judges it: what the resets saved, what held the late ones, what to change in how you work. |
 | `/jalon-help` | Lists these commands. |
 
