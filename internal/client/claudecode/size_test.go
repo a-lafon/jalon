@@ -346,8 +346,8 @@ func TestReadTailCostOfTheCompactionSearch(t *testing.T) {
 }
 
 // toolsFixture is the transcript package's tool fixture: a large Read, a large
-// Bash, two small calls answered together, an MCP call, and a result whose
-// tool_use is absent.
+// Bash, two small calls answered together, an MCP call, a result whose
+// tool_use is absent, and a subagent's result larger than all of them.
 const toolsFixture = "../../transcript/testdata/tools.jsonl"
 
 // toolsTail reads the fixture as the advice path reads a transcript, with a
@@ -381,6 +381,16 @@ func TestReadTailCollectsTheLargestOutputs(t *testing.T) {
 	// The two small results answered together did not displace them.
 	if got.Outputs[2].Bytes >= got.Outputs[1].Bytes {
 		t.Errorf("third = %+v", got.Outputs[2])
+	}
+}
+
+// A subagent's result costs the main conversation's context nothing: the
+// largest result of the fixture is one, and it is not listed.
+func TestReadTailLeavesOutASubagentResult(t *testing.T) {
+	for _, o := range toolsTail(t).Outputs {
+		if o.ID == "toolu_subagent_read" {
+			t.Errorf("outputs hold the sidechain result: %+v", o)
+		}
 	}
 }
 
