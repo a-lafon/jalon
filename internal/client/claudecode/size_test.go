@@ -450,3 +450,21 @@ func TestReadTailCostOfTheOutputCollection(t *testing.T) {
 		t.Errorf("the collecting read takes %v, past its own %v budget", whole, collectBudget)
 	}
 }
+
+// Nothing before a compaction is in the context: the collection stops at the
+// boundary, as the size and compaction searches do. The reproduction: a 48 KB
+// result, the boundary, a 1 KB result, then the size.
+func TestReadTailCollectsNoResultPastTheCompaction(t *testing.T) {
+	result := func(id string, n int) string {
+		return `{"type":"user","isSidechain":false,"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"` + id + `","content":"` + strings.Repeat("x", n) + `"}]}}`
+	}
+	boundary := `{"type":"system","subtype":"compact_boundary","isSidechain":false,"compactMetadata":{"trigger":"auto","preTokens":212000,"postTokens":90000}}`
+	path := writeLines(t, typedLine("p0", true, false), result("toolu_dropped", 48<<10), boundary, result("toolu_kept", 1000), sizeLine(212_000, false))
+	got := readTail(path, "", true, "")
+	if !got.Compacted {
+		t.Errorf("tail = %+v, want the compaction", got)
+	}
+	if len(got.Outputs) != 1 || got.Outputs[0].ID != "toolu_kept" {
+		t.Errorf("outputs = %+v, want only the result after the boundary", got.Outputs)
+	}
+}

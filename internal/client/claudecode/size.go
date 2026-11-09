@@ -57,7 +57,8 @@ var collectBudget = 100 * time.Millisecond
 // outside it shows as false.
 //
 // With typed, Outputs are also collected: the largest tool results of what was
-// read, which only the advice path asks for, within collectBudget.
+// read, which only the advice path asks for, within collectBudget and back to a
+// compact_boundary, since what precedes one is no longer in the context.
 //
 // Lines that cannot be parsed, including the partial first line of a read, are
 // skipped. It reads the last 1 MB, then up to 8 MB until it finds what it looks
@@ -158,7 +159,7 @@ func scanTail(buf []byte, promptID string, typed bool, since string, deadline ti
 		lookSize := !sized && (bytes.Contains(line, usageMark) || bytes.Contains(line, compactMark))
 		lookTyped := typed && !tail.Typed && bytes.Contains(line, humanMark)
 		lookSection := section && bytes.Contains(line, sectionMark)
-		lookBoundary := boundary && bytes.Contains(line, compactMark)
+		lookBoundary := (boundary || collect) && bytes.Contains(line, compactMark)
 		// The prompt the search stops at is a typed one, like the one typed looks for.
 		lookSince := boundary && since != "" && bytes.Contains(line, humanMark)
 		lookResult := collect && bytes.Contains(line, resultMark)
@@ -186,7 +187,9 @@ func scanTail(buf []byte, promptID string, typed bool, since string, deadline ti
 		// search stops at is the one typed matches.
 		switch {
 		case lookBoundary && e.Type == "system" && e.Subtype == "compact_boundary":
-			tail.Compacted, boundary = true, false
+			// The collection stops here too: what precedes the boundary is not in
+			// the context. Compacted only while the search for it is still on.
+			tail.Compacted, boundary, collect = boundary, false, false
 		case lookSince && e.Type == "user" && !e.IsSidechain && e.Origin.Kind == "human" && e.PromptID == since:
 			boundary = false
 		}
