@@ -261,7 +261,7 @@ func runPromptHook(ctx context.Context, args []string, stdin io.Reader, out io.W
 		// A compaction is looked for back to the prompt last recorded: what came
 		// before it was already measured, and the work since may have regrown the
 		// context past the size test.
-		tail := adapter.ReadTail(prompt, "", false, prev.Prompt)
+		tail := adapter.ReadTail(prompt, "", false, false, prev.Prompt)
 		if words, ok := handoffAsked(prompt.Text, adapter); ok {
 			return askHandoff(dir, adapter, prompt, tail, cfg, words, now)
 		}
@@ -278,7 +278,7 @@ func runPromptHook(ctx context.Context, args []string, stdin io.Reader, out io.W
 		// typed prompt before it shows the session is typed in; it is looked for
 		// only now, since in a program's session the search reads 8 MB. That read
 		// is the advice path's own: it also brings the largest tool results.
-		advice := adapter.ReadTail(prompt, "", true, "")
+		advice := adapter.ReadTail(prompt, "", true, true, "")
 		if !st.Typed {
 			if !advice.Typed ||
 				advisor.Record(dir, prompt.Session, st.Size, now, prompt.ID, true, tail.Compacted) != nil {
@@ -359,13 +359,13 @@ func runStopHook(ctx context.Context, args []string, stdin io.Reader, out io.Wri
 			// After a compaction during the turn, the advice is moot: the boundary
 			// shows it even when the work since has regrown the context past the
 			// size test.
-			if t := adapter.ReadTail(ev.Prompt, "", false, st.Prompt); t.Compacted || advisor.Compacted(st.LastAdvised, t.Size) {
+			if t := adapter.ReadTail(ev.Prompt, "", false, false, st.Prompt); t.Compacted || advisor.Compacted(st.LastAdvised, t.Size) {
 				return nil
 			}
 			// The handoff file is written after the section, so the turn need not
 			// end with it: reminding then would show the user a second section.
 			// One read for both, in place of the typed one the block needs anyway.
-			if turn := adapter.ReadTail(ev.Prompt, ev.ID, true, ""); turn.Section || !turn.Typed {
+			if turn := adapter.ReadTail(ev.Prompt, ev.ID, true, false, ""); turn.Section || !turn.Typed {
 				return nil
 			}
 			handoffDir := handoffFolder(ev.Dir)
@@ -385,7 +385,7 @@ func runStopHook(ctx context.Context, args []string, stdin io.Reader, out io.Wri
 			return reply
 		}
 
-		tail := adapter.ReadTail(ev.Prompt, "", false, st.Prompt)
+		tail := adapter.ReadTail(ev.Prompt, "", false, false, st.Prompt)
 		st, ok = measure(dir, adapter, ev.Prompt, tail, cfg, now)
 		if !ok {
 			return nil
@@ -395,7 +395,7 @@ func runStopHook(ctx context.Context, args []string, stdin io.Reader, out io.Wri
 		// blocked; that is looked for only before blocking, since in a program's
 		// session the search reads 8 MB. That read is the advice path's own: it
 		// also brings the largest tool results.
-		advice := adapter.ReadTail(ev.Prompt, ev.ID, true, "")
+		advice := adapter.ReadTail(ev.Prompt, ev.ID, true, true, "")
 		if !advice.Typed {
 			return nil
 		}
@@ -467,7 +467,7 @@ func askHandoff(dir string, adapter client.Adapter, p client.Prompt, tail client
 	// The advice path's own read: this is an advice, it spends the budget and
 	// arms the reminder, and the compact line it also asks for is what the
 	// largest tool results make precise.
-	body, ok := recordAdvice(dir, adapter, p, st, tail.CacheTTL, adapter.ReadTail(p, "", true, "").Outputs, now, written != "")
+	body, ok := recordAdvice(dir, adapter, p, st, tail.CacheTTL, adapter.ReadTail(p, "", true, true, "").Outputs, now, written != "")
 	if !ok {
 		return nil
 	}
@@ -503,7 +503,7 @@ func askAdvise(dir string, adapter client.Adapter, p client.Prompt, tail client.
 	st, _ := advisor.Load(dir, p.Session)
 	// The advice path's own read, as a threshold advice makes: the body it
 	// sends is the same one, the largest tool results included.
-	body, ok := recordAdvice(dir, adapter, p, st, tail.CacheTTL, adapter.ReadTail(p, "", true, "").Outputs, now, false)
+	body, ok := recordAdvice(dir, adapter, p, st, tail.CacheTTL, adapter.ReadTail(p, "", true, true, "").Outputs, now, false)
 	if !ok {
 		return nil
 	}

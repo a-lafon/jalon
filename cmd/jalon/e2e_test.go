@@ -196,7 +196,7 @@ func TestE2ETranscriptFieldsJalonReads(t *testing.T) {
 	if !assistant || !prompt {
 		t.Errorf("assistant entry with isSidechain and usage.cache_creation: %v; user entry with promptId: %v", assistant, prompt)
 	}
-	tail := claudecode.Adapter{}.ReadTail(client.Prompt{Ref: c.transcript()}, "", false, "")
+	tail := claudecode.Adapter{}.ReadTail(client.Prompt{Ref: c.transcript()}, "", false, false, "")
 	if tail.Size != 121_000 || tail.CacheTTL != 5*time.Minute {
 		t.Errorf("adapter read size %d, lifetime %v; want 121000, 5m", tail.Size, tail.CacheTTL)
 	}
