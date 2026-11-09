@@ -501,3 +501,26 @@ func TestReadTailCollectsOnlyWhenAsked(t *testing.T) {
 		t.Error("the read that asks for the outputs got none")
 	}
 }
+
+// Past its deadline the collection keeps what it has, and what it has is left
+// unnamed: the calls it would have read are further back. The advice says so
+// without claiming the result was not read.
+func TestScanTailLeavesWhatItKeptUnnamedPastItsDeadline(t *testing.T) {
+	lines := []string{`{"type":"assistant","isSidechain":false,"message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Read","input":{"file_path":"/src/far-back.go"}}]}}`}
+	for range 1800 {
+		lines = append(lines, `{"type":"user","isSidechain":false,"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"small","content":"`+strings.Repeat("x", 400)+`"}]}}`)
+	}
+	lines = append(lines,
+		`{"type":"user","isSidechain":false,"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"`+strings.Repeat("y", 48<<10)+`"}]}}`,
+		typedLine("p0", true, false), sizeLine(212_000, false))
+	// The buffer is scanned with a budget that covers its last entries and
+	// nothing like the 1800 results between them and the call.
+	buf := []byte(strings.Join(lines, "\n") + "\n")
+	got, sized := scanTail(buf, "", true, true, "", time.Now().Add(time.Millisecond))
+	if !sized || len(got.Outputs) == 0 || got.Outputs[0].ID != "t1" {
+		t.Fatalf("tail = %+v, sized = %v; want the large result kept", got, sized)
+	}
+	if got.Outputs[0].Tool != "" {
+		t.Errorf("outputs = %+v, want the kept result unnamed: its call is past the deadline", got.Outputs)
+	}
+}

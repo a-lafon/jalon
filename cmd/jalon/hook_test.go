@@ -16,6 +16,7 @@ import (
 
 	"github.com/a-lafon/jalon/internal/advisor"
 	"github.com/a-lafon/jalon/internal/client/claudecode"
+	"github.com/a-lafon/jalon/internal/transcript"
 )
 
 // afterTests holds what TestMain removes once every test has run.
@@ -1981,5 +1982,18 @@ func TestOutputsListFitsTheInstruction(t *testing.T) {
 	if rest := strings.Join(with[i+5:], "\n"); rest != strings.Join(without[i:], "\n") ||
 		!strings.HasPrefix(rest, "Keep the section under 10 lines") {
 		t.Errorf("the body after the list is %q", rest)
+	}
+}
+
+// A result the collection kept without reaching the call it answers is named
+// as such: the call may be outside what was read, past a compaction, or beyond
+// the deadline the collection stopped at, and saying Jalon did not read it
+// would be false in the last two cases.
+func TestOutputsListNamesAResultItCouldNotName(t *testing.T) {
+	got := outputsList([]transcript.Output{{Tool: "Read", Target: "/src/parser.go", Bytes: 49_152}, {Bytes: 49_152, ID: "t1"}})
+	if !strings.Contains(got, "- Read /src/parser.go, about 48 KB\n") ||
+		!strings.Contains(got, "- a result Jalon could not name, about 48 KB\n") ||
+		strings.Contains(got, "did not read") {
+		t.Errorf("list = %q", got)
 	}
 }
