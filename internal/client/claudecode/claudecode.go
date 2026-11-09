@@ -99,8 +99,8 @@ func isHuman(prompt string) bool {
 	return true
 }
 
-func (Adapter) ReadTail(p client.Prompt, promptID string, typed bool) client.Tail {
-	return readTail(p.Ref, promptID, typed)
+func (Adapter) ReadTail(p client.Prompt, promptID string, typed bool, since string) client.Tail {
+	return readTail(p.Ref, promptID, typed, since)
 }
 
 func (Adapter) ContextFloor(p client.Prompt) (int, bool) { return contextFloor(p.Ref) }

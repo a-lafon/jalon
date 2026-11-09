@@ -10,12 +10,12 @@ import (
 // prompt hook runs this on every prompt.
 func FuzzScanTail(f *testing.F) {
 	if b, err := os.ReadFile("../../transcript/testdata/session.jsonl"); err == nil {
-		f.Add(b, "", false)
-		f.Add(b[len(b)/2:], "", true)
+		f.Add(b, "", false, "")
+		f.Add(b[len(b)/2:], "", true, "")
 	}
-	f.Add([]byte("{\"type\":\"assistant\",\"message\":{\"usage\":{}}}\n"), "abc", true)
-	f.Add([]byte("\n\n{\"type\":"), "", false)
-	f.Fuzz(func(t *testing.T, buf []byte, promptID string, typed bool) {
-		scanTail(buf, promptID, typed)
+	f.Add([]byte("{\"type\":\"assistant\",\"message\":{\"usage\":{}}}\n"), "abc", true, "p1")
+	f.Add([]byte("\n\n{\"type\":"), "", false, "")
+	f.Fuzz(func(t *testing.T, buf []byte, promptID string, typed bool, since string) {
+		scanTail(buf, promptID, typed, since)
 	})
 }
