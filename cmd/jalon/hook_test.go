@@ -1707,6 +1707,87 @@ func writeJalonSkills(t *testing.T) {
 	}
 }
 
+// TestAdviseAsked covers the guard that tells the advise command from a prompt
+// that merely mentions it.
+func TestAdviseAsked(t *testing.T) {
+	useHome(t)
+	writeJalonSkills(t)
+	for _, tt := range []struct {
+		text, words string
+		asked       bool
+	}{
+		{"/jalon-advise", "", true},
+		{"/jalon-advise some words", "some words", true},
+		{"/jalon-advised", "", false},
+		{"please run /jalon-advise", "", false},
+	} {
+		words, asked := adviseAsked(tt.text, claudecode.Adapter{})
+		if asked != tt.asked || words != tt.words {
+			t.Errorf("adviseAsked(%q) = %q, %v; want %q, %v", tt.text, words, asked, tt.words, tt.asked)
+		}
+	}
+}
+
+func TestPromptHookAnswersTheAdviseCommand(t *testing.T) {
+	adviseInput := func(session, promptID, cwd, text string) string {
+		b, _ := json.Marshal(map[string]string{"session_id": session, "prompt_id": promptID, "cwd": cwd, "transcript_path": transcriptFile(session), "hook_event_name": "UserPromptSubmit", "prompt": text})
+		return string(b)
+	}
+	t.Run("skill not installed", func(t *testing.T) {
+		_, cfg := hookState(t, "s1", 120_000)
+		if got := runPrompt(t, cfg, adviseInput("s1", "p1", gitRepo(t), "/jalon-advise")); got != "" {
+			t.Errorf("output = %q, want nothing", got)
+		}
+	})
+	t.Run("size not known yet", func(t *testing.T) {
+		dir := useHome(t)
+		writeJalonSkills(t)
+		var out hookOutput
+		raw := runPrompt(t, configWith(t, thresholdsConfig), adviseInput("s1", "p1", gitRepo(t), "/jalon-advise"))
+		if err := json.Unmarshal([]byte(raw), &out); err != nil {
+			t.Fatalf("output %q: %v", raw, err)
+		}
+		if out.SystemMessage != "Jalon: advice asked." || !strings.HasPrefix(out.HookSpecificOutput.AdditionalContext, "Jalon: the user typed /jalon-advise ") {
+			t.Errorf("output = %+v", out)
+		}
+		if st, _ := advisor.Load(dir, "s1"); st.LastAdvised != 0 || st.AdvisedPrompt != "" || st.Proposed == "" {
+			t.Errorf("state = %+v, want a proposed handoff and no advised size", st)
+		}
+	})
+	if strings.HasPrefix(adviseAskedPrefix, advisor.MessagePrefix) {
+		t.Error("the advice asked message starts like an advice: the report would count it")
+	}
+}
+
+// TestAskedAdviceSendsTheThresholdBody fails when the advice the user asks for
+// and the one a threshold gives do not send the same instruction body: the
+// wording has one source, instructionBody, and only the openings differ. Both
+// are read from the hook's output, so no copy of the wording is written here.
+func TestAskedAdviceSendsTheThresholdBody(t *testing.T) {
+	repo := gitRepo(t)
+	body := func(t *testing.T, size int, text string) string {
+		t.Helper()
+		_, cfg := hookState(t, "s1", size)
+		writeJalonSkills(t)
+		raw := runPrompt(t, cfg, hookInputText("s1", repo, text))
+		var out hookOutput
+		if err := json.Unmarshal([]byte(raw), &out); err != nil {
+			t.Fatalf("output %q: %v", raw, err)
+		}
+		_, after, ok := strings.Cut(out.HookSpecificOutput.AdditionalContext, "before any file you write, ")
+		if !ok {
+			t.Fatalf("no opening in %q", out.HookSpecificOutput.AdditionalContext)
+		}
+		return after
+	}
+	var asked, crossed string
+	t.Run("asked below the threshold", func(t *testing.T) { asked = body(t, 120_000, "/jalon-advise") })
+	t.Run("threshold crossed", func(t *testing.T) { crossed = body(t, 212_000, "hi") })
+	if asked != crossed {
+		t.Errorf("the asked advice's body differs from the threshold advice's\n got: %q\nwant: %q", asked, crossed)
+	}
+}
+
 func TestPromptHookAnswersTheHandoffCommand(t *testing.T) {
 	handoffInput := func(session, promptID, cwd, text string) string {
 		b, _ := json.Marshal(map[string]string{"session_id": session, "prompt_id": promptID, "cwd": cwd, "transcript_path": transcriptFile(session), "hook_event_name": "UserPromptSubmit", "prompt": text})
