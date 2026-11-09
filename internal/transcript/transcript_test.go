@@ -667,7 +667,8 @@ func TestStartOf(t *testing.T) {
 
 // tools.jsonl is a short session built for the tool-output reader: a large
 // Read, a large Bash whose command spans lines, two small calls answered
-// together in one entry, an MCP call, and a result whose tool_use is absent.
+// together in one entry, an MCP call, a result whose tool_use is absent, and a
+// subagent's result larger than all of them.
 
 // toolsFixture is the content of each message of tools.jsonl, in file order.
 func toolsFixture(t *testing.T) []json.RawMessage {
@@ -694,7 +695,9 @@ func toolsFixture(t *testing.T) []json.RawMessage {
 func TestReadToolsFixture(t *testing.T) {
 	r := NewReader()
 	c := readFixture(t, r, "tools.jsonl")
-	want := Coverage{Files: 1, Read: 11, Interpreted: 11, Ignored: 0, Skipped: 0}
+	// The subagent's entry is read and ignored: a sidechain is not the main
+	// conversation.
+	want := Coverage{Files: 1, Read: 12, Interpreted: 11, Ignored: 1, Skipped: 0}
 	if r.Coverage != want {
 		t.Errorf("coverage = %+v, want %+v", r.Coverage, want)
 	}
