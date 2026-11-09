@@ -55,9 +55,10 @@ type Tail struct {
 	// was read from, shows as false.
 	Compacted bool
 	// Outputs are the largest tool results the read found, largest first, at
-	// most three. They cover only the part of the conversation that was read,
-	// never the whole of it, so they are the largest Jalon could see and not
-	// the largest there are. Their sizes are the bytes of the result's own
+	// most three. They cover only the part of the conversation that was read
+	// and, back from its end, no further than a compaction, since what precedes
+	// one is no longer in the context: they are the largest Jalon could see and
+	// not the largest there are. Their sizes are the bytes of the result's own
 	// text, an estimate, never a token count. A result whose call was not read
 	// keeps its size and has no tool name: none is guessed. They are collected
 	// only by the read that looks for a typed prompt, the one a caller makes
