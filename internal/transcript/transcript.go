@@ -10,6 +10,7 @@ package transcript
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -676,6 +677,78 @@ func handoffWrites(raw json.RawMessage, at time.Time) []Write {
 		if b.Type == "tool_use" && b.Name == "Write" && handoff.IsPath(b.Input.FilePath) {
 			out = append(out, Write{Path: b.Input.FilePath, Time: at})
 		}
+	}
+	return out
+}
+
+// Output is one tool result of the conversation: the tool that produced it,
+// what it acted on, and how big the result is in bytes. Tool and Target are ""
+// until the tool_use the result answers has been read, and stay "" when it was
+// not: a tool is never guessed from the result alone.
+type Output struct {
+	Tool   string
+	Target string
+	Bytes  int
+	// ID is the tool_use_id of the call the result answers.
+	ID string
+}
+
+// targetRunes bounds the target kept of a tool call: it goes into the
+// instruction sent to the model, so a command or a path never carries a line
+// break or a page of text with it.
+const targetRunes = 80
+
+// ToolResults are the tool_result blocks of a user message, each sized by its
+// own content: calls made in parallel arrive as several blocks of one entry,
+// whose own length is their sum.
+func ToolResults(raw json.RawMessage) []Output {
+	if !bytes.Contains(raw, []byte(`"tool_result"`)) {
+		return nil
+	}
+	var blocks []struct {
+		Type      string          `json:"type"`
+		ToolUseID string          `json:"tool_use_id"`
+		Content   json.RawMessage `json:"content"`
+	}
+	if json.Unmarshal(raw, &blocks) != nil {
+		return nil
+	}
+	var out []Output
+	for _, b := range blocks {
+		if b.Type == "tool_result" {
+			out = append(out, Output{Bytes: len(b.Content), ID: b.ToolUseID})
+		}
+	}
+	return out
+}
+
+// ToolCalls are the tool_use blocks of an assistant message: the id the result
+// will answer, the tool's name, server-qualified as the client writes it for an
+// MCP tool, and the target it acts on, "" when its input names none.
+func ToolCalls(raw json.RawMessage) []Output {
+	if !bytes.Contains(raw, []byte(`"tool_use"`)) {
+		return nil
+	}
+	var blocks []struct {
+		Type  string `json:"type"`
+		ID    string `json:"id"`
+		Name  string `json:"name"`
+		Input struct {
+			FilePath string `json:"file_path"`
+			Command  string `json:"command"`
+			Pattern  string `json:"pattern"`
+		} `json:"input"`
+	}
+	if json.Unmarshal(raw, &blocks) != nil {
+		return nil
+	}
+	var out []Output
+	for _, b := range blocks {
+		if b.Type != "tool_use" {
+			continue
+		}
+		target := cmp.Or(b.Input.FilePath, b.Input.Command, b.Input.Pattern)
+		out = append(out, Output{Tool: b.Name, Target: startOf(target, targetRunes), ID: b.ID})
 	}
 	return out
 }

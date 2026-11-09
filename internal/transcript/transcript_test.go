@@ -1,10 +1,13 @@
 package transcript
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -659,5 +662,108 @@ func TestStartOf(t *testing.T) {
 		if got := startOf(tc.in, tc.n); got != tc.want {
 			t.Errorf("startOf(%q) = %q, want %q", tc.in, got, tc.want)
 		}
+	}
+}
+
+// tools.jsonl is a short session built for the tool-output reader: a large
+// Read, a large Bash whose command spans lines, two small calls answered
+// together in one entry, an MCP call, and a result whose tool_use is absent.
+
+// toolsFixture is the content of each message of tools.jsonl, in file order.
+func toolsFixture(t *testing.T) []json.RawMessage {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("testdata", "tools.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []json.RawMessage
+	for _, line := range bytes.Split(bytes.TrimSpace(raw), []byte("\n")) {
+		var e struct {
+			Message struct {
+				Content json.RawMessage `json:"content"`
+			} `json:"message"`
+		}
+		if err := json.Unmarshal(line, &e); err != nil {
+			t.Fatal(err)
+		}
+		out = append(out, e.Message.Content)
+	}
+	return out
+}
+
+func TestReadToolsFixture(t *testing.T) {
+	r := NewReader()
+	c := readFixture(t, r, "tools.jsonl")
+	want := Coverage{Files: 1, Read: 11, Interpreted: 11, Ignored: 0, Skipped: 0}
+	if r.Coverage != want {
+		t.Errorf("coverage = %+v, want %+v", r.Coverage, want)
+	}
+	if len(c.Turns) != 1 || c.Human != 1 {
+		t.Errorf("turns = %d, human = %d, want 1 and 1", len(c.Turns), c.Human)
+	}
+}
+
+// The two results that arrive together are sized apart: the entry's own length
+// is their sum plus the array around them.
+func TestToolResultsSizeEachBlock(t *testing.T) {
+	entry := toolsFixture(t)[6]
+	got := ToolResults(entry)
+	if len(got) != 2 {
+		t.Fatalf("results = %+v, want 2", got)
+	}
+	if got[0].ID != "toolu_grep" || got[1].ID != "toolu_read_small" {
+		t.Errorf("ids = %q and %q", got[0].ID, got[1].ID)
+	}
+	if got[0].Bytes == got[1].Bytes {
+		t.Errorf("both sized %d: each block must be sized by its own content", got[0].Bytes)
+	}
+	if sum := got[0].Bytes + got[1].Bytes; sum >= len(entry) {
+		t.Errorf("sizes sum to %d, the entry is %d: the entry's length is not one result's size", sum, len(entry))
+	}
+}
+
+func TestToolCallsNameAndTarget(t *testing.T) {
+	f := toolsFixture(t)
+	tests := []struct {
+		name         string
+		entry        int
+		tool, target string
+	}{
+		{"read", 1, "Read", "/src/internal/parser/parser.go"},
+		{"bash", 3, "Bash", "go vet ./... && go test ./... \\ -count=1"},
+		{"mcp", 7, "mcp__context7__get-library-docs", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ToolCalls(f[tt.entry])
+			if len(got) != 1 {
+				t.Fatalf("calls = %+v, want 1", got)
+			}
+			if got[0].Tool != tt.tool || got[0].Target != tt.target {
+				t.Errorf("tool = %q, target = %q, want %q and %q", got[0].Tool, got[0].Target, tt.tool, tt.target)
+			}
+		})
+	}
+	// The two calls of one step keep their own ids and targets.
+	if got := ToolCalls(f[5]); len(got) != 2 || got[0].Target != "scanTail" || got[1].Target != "/src/go.mod" {
+		t.Errorf("parallel calls = %+v", got)
+	}
+}
+
+// The target goes into an instruction: it is one line, and bounded.
+func TestToolCallTargetIsOneBoundedLine(t *testing.T) {
+	long := "/src/" + strings.Repeat("deep/", 40) + "file.go"
+	raw := json.RawMessage(`[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"first line\nsecond line\n  third"}},` +
+		`{"type":"tool_use","id":"t2","name":"Read","input":{"file_path":` + strconv.Quote(long) + `}}]`)
+	for _, got := range ToolCalls(raw) {
+		if strings.ContainsAny(got.Target, "\n\r") {
+			t.Errorf("target %q holds a line break", got.Target)
+		}
+		if n := len([]rune(got.Target)); n > targetRunes+1 {
+			t.Errorf("target is %d runes, want at most %d", n, targetRunes+1)
+		}
+	}
+	if got := ToolCalls(raw); got[0].Target != "first line second line third" {
+		t.Errorf("command target = %q, want the lines joined", got[0].Target)
 	}
 }
