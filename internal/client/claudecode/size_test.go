@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/a-lafon/jalon/internal/client"
 )
 
 func sizeLine(size int, sidechain bool) string {
@@ -340,5 +342,111 @@ func TestReadTailCostOfTheCompactionSearch(t *testing.T) {
 	t.Logf("prompt hook read of a 1 MB tail: %v bounded at the last prompt, %v scanning the whole window, %v stopping at the first entry", bounded, whole, exit)
 	if whole > 50*time.Millisecond {
 		t.Errorf("the read takes %v, well past the hook's 500ms budget", whole)
+	}
+}
+
+// toolsFixture is the transcript package's tool fixture: a large Read, a large
+// Bash, two small calls answered together, an MCP call, and a result whose
+// tool_use is absent.
+const toolsFixture = "../../transcript/testdata/tools.jsonl"
+
+// toolsTail reads the fixture as the advice path reads a transcript, with a
+// last entry giving the size.
+func toolsTail(t *testing.T) client.Tail {
+	t.Helper()
+	raw, err := os.ReadFile(toolsFixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := append(strings.Split(strings.TrimSuffix(string(raw), "\n"), "\n"), sizeLine(212_000, false))
+	return readTail(writeLines(t, lines...), "", true, "")
+}
+
+func TestReadTailCollectsTheLargestOutputs(t *testing.T) {
+	got := toolsTail(t)
+	if len(got.Outputs) != maxOutputs {
+		t.Fatalf("outputs = %+v, want %d", got.Outputs, maxOutputs)
+	}
+	if got.Outputs[0].Tool != "Read" || got.Outputs[0].Target != "/src/internal/parser/parser.go" {
+		t.Errorf("first = %+v, want the large Read with its path", got.Outputs[0])
+	}
+	if got.Outputs[1].Tool != "Bash" || !strings.HasPrefix(got.Outputs[1].Target, "go vet ./...") {
+		t.Errorf("second = %+v, want the large Bash with its command", got.Outputs[1])
+	}
+	for i := 1; i < len(got.Outputs); i++ {
+		if got.Outputs[i-1].Bytes < got.Outputs[i].Bytes {
+			t.Errorf("outputs are not largest first: %+v", got.Outputs)
+		}
+	}
+	// The two small results answered together did not displace them.
+	if got.Outputs[2].Bytes >= got.Outputs[1].Bytes {
+		t.Errorf("third = %+v", got.Outputs[2])
+	}
+}
+
+// A result whose tool_use is not in the window keeps its size and no name:
+// nothing in the list names a tool that was not read.
+func TestReadTailLeavesAnOrphanResultUnnamed(t *testing.T) {
+	got := toolsTail(t)
+	orphan := got.Outputs[len(got.Outputs)-1]
+	if orphan.ID != "toolu_gone" {
+		t.Fatalf("last = %+v, want the result whose call is absent", orphan)
+	}
+	if orphan.Tool != "" || orphan.Target != "" {
+		t.Errorf("orphan = %+v, want no tool and no target", orphan)
+	}
+	if orphan.Bytes == 0 {
+		t.Error("the orphan lost its size")
+	}
+}
+
+// Past its deadline the collection yields what it has: the size is still read,
+// so the advice is never lost to the scan.
+func TestScanTailGivesUpCollectingPastItsDeadline(t *testing.T) {
+	raw, err := os.ReadFile(toolsFixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	buf := append(raw, []byte(sizeLine(212_000, false)+"\n")...)
+	tail, sized := scanTail(buf, "", true, "", time.Now().Add(-time.Second))
+	if !sized || tail.Size != 212_000 || !tail.Typed {
+		t.Errorf("tail = %+v, sized = %v; want the size and the typed prompt read", tail, sized)
+	}
+	if len(tail.Outputs) != 0 {
+		t.Errorf("outputs = %+v, want none past the deadline", tail.Outputs)
+	}
+}
+
+// The collection has no early exit: it walks the whole window, on the advice
+// path only. The figures are reported in the change's design notes.
+func TestReadTailCostOfTheOutputCollection(t *testing.T) {
+	raw, err := os.ReadFile(toolsFixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture := strings.Split(strings.TrimSuffix(string(raw), "\n"), "\n")
+	timed := func(path string, typed bool) time.Duration {
+		readTail(path, "", typed, "") // warm the page cache
+		start := time.Now()
+		for range 20 {
+			readTail(path, "", typed, "")
+		}
+		return time.Since(start) / 20
+	}
+	// The advice path on a 1 MB tail holding the tool fixture at its end.
+	head := []string{typedLine("p0", true, false)}
+	collected := timed(bigFile(t, head, 1<<20, append(fixture, sizeLine(212_000, false))), true)
+	// The same read without the collection: it stops at the first entry from
+	// the end that gives the size and the typed prompt.
+	exit := timed(bigFile(t, head, 1<<20, append(fixture, sizeLine(212_000, false))), false)
+	// The worst case: a 1 MB window of tool results, every line of it parsed.
+	results := make([]string, 0, 2000)
+	for range 2000 {
+		results = append(results, `{"type":"user","isSidechain":false,"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"`+strings.Repeat("x", 400)+`"}]}}`)
+	}
+	whole := timed(bigFile(t, head, 0, append(results, sizeLine(212_000, false))), true)
+	t.Logf("advice-path read of a 1 MB tail: %v collecting, %v without the collection, %v collecting a window that is all tool results", collected, exit, whole)
+	if whole > collectBudget {
+		t.Errorf("the collecting read takes %v, past its own %v budget", whole, collectBudget)
 	}
 }
