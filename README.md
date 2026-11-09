@@ -17,6 +17,8 @@ In five days of my own sessions, a request at 400K tokens cost three and a half 
 
 When a conversation's context has grown by 200K tokens above its starting size, and again after every further 60K, the model ends its answer with one recommendation, in your language, in a quoted block that starts with **Jalon**: a new session, a handoff to resume from, or a `/compact` line. You run the command; Jalon never does.
 
+The advice also names the three largest tool results Jalon found, with the tool, what it acted on and a size, so the model says what its `/compact` line or its handoff drops. Those sizes are estimated from the text of the results, not measured token counts, and the list covers the recent context Jalon read, not the whole conversation.
+
 Two real Claude Code sessions on a toy project, with `advise_tokens` lowered to 10K. After reading a long log to find why an export crashed, little needs to carry over, so the model gives a `/compact` line that keeps the cause and the next step and drops the log:
 
 <img alt="The end of a Claude Code answer: a quoted block starting with Jalon recommends a compact and gives a /compact line keeping the crash's cause and the next step, dropping the raw log; the status line below shows the pole full, reset advised" src="assets/advice-compact.svg" width="720">
@@ -88,7 +90,7 @@ Jalon advises; you act. It never:
 - **sends anything anywhere**: it makes no network call, and reads your transcripts on your machine;
 - **moves, edits or deletes a handoff**.
 
-What it reads from a transcript belongs to a format internal to Claude Code, not a published one: the usage of the last request, which gives the context size, and the `compact_boundary` entry, which tells Jalon a compaction reset the conversation. Should that entry disappear in a later version, Jalon falls back to the size test, a size that fell under half the previous one.
+What it reads from a transcript belongs to a format internal to Claude Code, not a published one: the usage of the last request, which gives the context size, the `compact_boundary` entry, which tells Jalon a compaction reset the conversation, and the `tool_use` and `tool_result` blocks the advice names the largest tool results from. Should that entry disappear in a later version, Jalon falls back to the size test, a size that fell under half the previous one. Any Claude Code version can change that format: the list of largest tool results then goes empty, and the advice comes without it.
 
 It writes only:
 
