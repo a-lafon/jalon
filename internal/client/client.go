@@ -123,8 +123,10 @@ type Adapter interface {
 	// promptID when it is not "". Looking for a typed prompt can read much
 	// further back, so it is asked for only before advice. A compaction is
 	// looked for back to the prompt with ID since, the last one the caller
-	// recorded, and through what was read when it is "".
-	ReadTail(p Prompt, promptID string, typed bool, since string) Tail
+	// recorded, and through what was read when it is "". With collect, which
+	// needs typed, the read also brings Outputs; it costs the walk of the whole
+	// window, so only a caller that uses them asks for it.
+	ReadTail(p Prompt, promptID string, typed, collect bool, since string) Tail
 	// ContextFloor is the size in tokens of the conversation's first request,
 	// which a reset cannot remove, and false when it cannot be told yet.
 	ContextFloor(Prompt) (int, bool)

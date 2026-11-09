@@ -56,14 +56,15 @@ var collectBudget = 100 * time.Millisecond
 // to the start of what was read. It never widens the window: a boundary
 // outside it shows as false.
 //
-// With typed, Outputs are also collected: the largest tool results of what was
-// read, which only the advice path asks for, within collectBudget and back to a
-// compact_boundary, since what precedes one is no longer in the context.
+// With collect, which needs typed, Outputs are also collected: the largest tool
+// results of what was read, which only the advice path asks for, within
+// collectBudget and back to a compact_boundary, since what precedes one is no
+// longer in the context.
 //
 // Lines that cannot be parsed, including the partial first line of a read, are
 // skipped. It reads the last 1 MB, then up to 8 MB until it finds what it looks
 // for.
-func readTail(path, promptID string, typed bool, since string) client.Tail {
+func readTail(path, promptID string, typed, collect bool, since string) client.Tail {
 	f, err := os.Open(path)
 	if err != nil {
 		return client.Tail{}
@@ -89,7 +90,7 @@ func readTail(path, promptID string, typed bool, since string) client.Tail {
 				buf = nil
 			}
 		}
-		tail, sized := scanTail(buf, promptID, typed, since, deadline)
+		tail, sized := scanTail(buf, promptID, typed, collect, since, deadline)
 		if sized && (!typed || tail.Typed) || start == 0 || window >= tailMax {
 			return tail
 		}
@@ -134,9 +135,9 @@ var (
 
 // scanTail scans the lines of buf from the end, until the size, the compaction
 // and, with typed, a typed prompt are found. sized is true when an entry
-// decided the size, even to say there is none. With typed it also collects the
+// decided the size, even to say there is none. With collect it also collects the
 // largest tool results, until deadline passes.
-func scanTail(buf []byte, promptID string, typed bool, since string, deadline time.Time) (tail client.Tail, sized bool) {
+func scanTail(buf []byte, promptID string, typed, collect bool, since string, deadline time.Time) (tail client.Tail, sized bool) {
 	// The section is looked for back to the turn's own prompt: the model gives
 	// it before the handoff file, so it is not always the turn's last message.
 	section := typed && promptID != ""
@@ -144,10 +145,10 @@ func scanTail(buf []byte, promptID string, typed bool, since string, deadline ti
 	// size-bearing entry, and after a compaction followed by work that reported
 	// back that entry comes long before the boundary.
 	boundary := true
-	// The largest tool results are collected on the advice path only, the read
-	// that looks for a typed prompt: this one has no early exit, it walks the
-	// whole window, so it runs on its own deadline and yields what it has.
-	collect := typed
+	// The largest tool results are collected on the advice path only, the one
+	// that uses them: this search has no early exit, it walks the whole window,
+	// so it runs on its own deadline and yields what it has.
+	collect = collect && typed
 	for end := len(buf); end > 0 && (!sized || typed && !tail.Typed || section || boundary || collect); {
 		start := bytes.LastIndexByte(buf[:end], '\n') + 1
 		line := buf[start:end]

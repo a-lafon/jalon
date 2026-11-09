@@ -200,10 +200,10 @@ func TestStatusSize(t *testing.T) {
 
 func TestReadTailReadsTheTranscriptOfThePrompt(t *testing.T) {
 	path := writeLines(t, typedLine("p1", true, false), sizeLine(212_000, false))
-	if got := (Adapter{}).ReadTail(client.Prompt{Ref: path}, "p1", true, ""); !reflect.DeepEqual(got, client.Tail{Size: 212_000, Typed: true}) {
+	if got := (Adapter{}).ReadTail(client.Prompt{Ref: path}, "p1", true, true, ""); !reflect.DeepEqual(got, client.Tail{Size: 212_000, Typed: true}) {
 		t.Errorf("tail = %+v", got)
 	}
-	if got := (Adapter{}).ReadTail(client.Prompt{}, "", true, ""); !reflect.DeepEqual(got, client.Tail{}) {
+	if got := (Adapter{}).ReadTail(client.Prompt{}, "", true, true, ""); !reflect.DeepEqual(got, client.Tail{}) {
 		t.Errorf("a prompt without a transcript has %+v", got)
 	}
 }

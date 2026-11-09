@@ -17,6 +17,6 @@ func FuzzScanTail(f *testing.F) {
 	f.Add([]byte("{\"type\":\"assistant\",\"message\":{\"usage\":{}}}\n"), "abc", true, "p1")
 	f.Add([]byte("\n\n{\"type\":"), "", false, "")
 	f.Fuzz(func(t *testing.T, buf []byte, promptID string, typed bool, since string) {
-		scanTail(buf, promptID, typed, since, time.Now().Add(collectBudget))
+		scanTail(buf, promptID, typed, typed, since, time.Now().Add(collectBudget))
 	})
 }
