@@ -202,6 +202,45 @@ func TestE2ETranscriptFieldsJalonReads(t *testing.T) {
 	}
 }
 
+func TestE2EAdviseCommand(t *testing.T) {
+	// Given a typed session at 121K, below the threshold, with Jalon's skills installed
+	c := newClaude(t, true, step{size: 121_000}, step{size: 122_000, section: true})
+	skills, err := claudecode.Adapter{}.Skills(jalonBin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, sk := range skills {
+		path := filepath.Join(c.home, ".claude", "skills", filepath.Base(filepath.Dir(sk.Path)), "SKILL.md")
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, sk.Content, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c.run("first")
+	// When the user types /jalon-advise, then its request holds the skill's body,
+	// the hook's instruction and the handoff folder, so option 2 can be written
+	reqs := c.run("/jalon-advise")
+	for _, want := range []string{"Jalon's prompt hook answers this command", "Jalon: the user typed /jalon-advise", filepath.Join(c.project, ".jalon", "handoffs") + "/"} {
+		if holding(reqs, want) == 0 {
+			t.Errorf("no request of /jalon-advise holds %q", want)
+		}
+	}
+	// And it forces no option, unlike /jalon-handoff: the three are offered
+	for _, want := range []string{"1. New session:", "2. Handoff:", "3. Compact:"} {
+		if holding(reqs, want) == 0 {
+			t.Errorf("no request of /jalon-advise holds %q", want)
+		}
+	}
+	if n := holding(reqs, "Recommend option 2"); n != 0 {
+		t.Errorf("%d requests of /jalon-advise recommend an option", n)
+	}
+	if st := c.state(); st["proposed"] == nil || st["last_advised"] != float64(121_000) {
+		t.Errorf("state = %v", st)
+	}
+}
+
 func TestE2EHandoffCommand(t *testing.T) {
 	// Given a typed session at 121K, below the threshold, with Jalon's skills installed
 	c := newClaude(t, true, step{size: 121_000}, step{size: 122_000, section: true})
