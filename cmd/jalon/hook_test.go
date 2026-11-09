@@ -680,8 +680,8 @@ func TestHookIsSilentWhenTheAdvisorIsDisabled(t *testing.T) {
 
 func TestHookDeletesOldStateFiles(t *testing.T) {
 	dir, cfg := hookState(t, "s1", 100_000)
-	advisor.Record(dir, "old", 100_000, hookNow.Add(-8*24*time.Hour), "", false)
-	advisor.Record(dir, "recent", 100_000, hookNow.Add(-6*24*time.Hour), "", false)
+	advisor.Record(dir, "old", 100_000, hookNow.Add(-8*24*time.Hour), "", false, false)
+	advisor.Record(dir, "recent", 100_000, hookNow.Add(-6*24*time.Hour), "", false, false)
 	runPrompt(t, cfg, hookInput("s1", t.TempDir()))
 	if _, ok := advisor.Load(dir, "old"); ok {
 		t.Error("a state file older than 7 days was kept")
@@ -1582,7 +1582,7 @@ func TestProgramsAreNeverAdvised(t *testing.T) {
 		cfg := configWith(t, thresholdsConfig)
 		// The typed prompt is out of the part read, but the state recorded it.
 		appendTranscript(t, "s1", assistantLine(startSize), assistantLine(300_000))
-		if err := advisor.Record(dir, "s1", 100_000, hookNow, "p1", true); err != nil {
+		if err := advisor.Record(dir, "s1", 100_000, hookNow, "p1", true, false); err != nil {
 			t.Fatal(err)
 		}
 		if got := runPrompt(t, cfg, promptInput("s1", "p2", gitRepo(t))); !strings.Contains(got, "300K") {
