@@ -164,3 +164,27 @@ func TestGoldenStopHook(t *testing.T) {
 		})
 	}
 }
+
+// An advice led to a handoff file, then the user compacted and work that
+// reported back regrew the context before the next typed prompt: the note is
+// not injected, although no prompt measured the compaction.
+func TestGoldenHookWriteBackAfterCompaction(t *testing.T) {
+	dir := useHome(t)
+	cfg := configWith(t, thresholdsConfig)
+	repo := gitRepo(t)
+	compactedTranscript(t, "s1")
+	// What the hook recorded and advised at the prompt before the compaction,
+	// and the handoff the model then wrote.
+	if err := advisor.Record(dir, "s1", 293_000, hookNow, "p0", true, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := advisor.MarkAdvised(dir, "s1", 274_000, hookNow, "p0", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := advisor.SetHandoff(dir, "s1", "", "a1b2c3d4", "2026-10-12/0900-a1b2c3d4"); err != nil {
+		t.Fatal(err)
+	}
+	writeHandoff(t, repo, "2026-10-12/0900-a1b2c3d4-parser.md")
+	out := runPrompt(t, cfg, hookInput("s1", repo))
+	checkGolden(t, "hook-write-back-after-compaction.golden", strings.ReplaceAll(out, repo, "<repo>"))
+}
