@@ -698,7 +698,7 @@ func TestInitKeptModDryRun(t *testing.T) {
 func jalonSkills(t *testing.T) []client.Skill {
 	t.Helper()
 	skills, err := claudecode.Adapter{}.Skills(testExe)
-	if err != nil || len(skills) != 5 {
+	if err != nil || len(skills) != 6 {
 		t.Fatalf("skills = %d, %v", len(skills), err)
 	}
 	return skills
@@ -775,7 +775,7 @@ func TestInitSkill(t *testing.T) {
 func TestInitReportSkillNamesTheBinary(t *testing.T) {
 	withExecutable(t, testExe)
 	runInitOK(t, "-settings", filepath.Join(t.TempDir(), "settings.json"), "-skill")
-	b, _ := os.ReadFile(jalonSkills(t)[3].Path)
+	b, _ := os.ReadFile(jalonSkills(t)[4].Path)
 	if !strings.Contains(string(b), "`"+testExe+" context-report -summary $ARGUMENTS`") || strings.Contains(string(b), "{jalon}") {
 		t.Errorf("report skill = %s", b)
 	}
@@ -852,7 +852,7 @@ func TestInitLeavesSomeoneElsesSkill(t *testing.T) {
 		t.Run(strings.Join(append([]string{"init"}, args...), " "), func(t *testing.T) {
 			withExecutable(t, testExe)
 			skills := jalonSkills(t)
-			help := skills[4].Path
+			help := skills[5].Path
 			writeSkill(t, help, foreignSkill)
 			// Someone else's skill named jalon is never taken for the 0.2.0 one.
 			writeSkill(t, retiredSkill(t), foreignSkill)
@@ -863,7 +863,7 @@ func TestInitLeavesSomeoneElsesSkill(t *testing.T) {
 				if want := "skill: " + help + " is in the way, a skill not written by Jalon; left as is"; !strings.Contains(out, want) {
 					t.Errorf("output lacks %q:\n%s", want, out)
 				}
-				checkSkills(t, skills[:4])
+				checkSkills(t, skills[:5])
 			case args[0] == "-skill=false":
 				// No skill of Jalon's is there, so none is written.
 				if _, err := os.Stat(skills[0].Path); !errors.Is(err, os.ErrNotExist) {

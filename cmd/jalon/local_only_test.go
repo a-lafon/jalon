@@ -137,6 +137,7 @@ func TestInitInAFreshHomeWritesTheSettingsAndTheConfig(t *testing.T) {
 // skillTree is what the /jalon-* skills add to the home, in tree order.
 var skillTree = []string{
 	".claude/skills/",
+	".claude/skills/jalon-advise/", ".claude/skills/jalon-advise/SKILL.md",
 	".claude/skills/jalon-handoff/", ".claude/skills/jalon-handoff/SKILL.md",
 	".claude/skills/jalon-help/", ".claude/skills/jalon-help/SKILL.md",
 	".claude/skills/jalon-recap/", ".claude/skills/jalon-recap/SKILL.md",

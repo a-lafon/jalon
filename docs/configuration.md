@@ -19,7 +19,7 @@ jalon init                      # add the hooks, the status line and the /jalon-
 jalon init --dry-run            # show what would change, write nothing
 jalon init --statusline=false   # add the hooks and the commands, no status line
 jalon init --mod                # add the hooks, and the mod in place of the status line
-jalon init --skill=false        # leave out the /jalon-* commands: resume, recap, handoff, report, help
+jalon init --skill=false        # leave out the /jalon-* commands: resume, recap, handoff, advise, report, help
 jalon init --uninstall          # remove what Jalon added, the mod included
 jalon init --advise-tokens 250000 --advise-step-tokens 100000   # also set the thresholds
 ```

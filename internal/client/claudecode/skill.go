@@ -17,7 +17,7 @@ var _ client.SkillInstaller = Adapter{}
 var skills embed.FS
 
 // skillNames is the set jalon init installs, in the order it prints them.
-var skillNames = []string{"jalon-resume", "jalon-recap", "jalon-handoff", "jalon-report", "jalon-help"}
+var skillNames = []string{"jalon-resume", "jalon-recap", "jalon-handoff", "jalon-advise", "jalon-report", "jalon-help"}
 
 // skillMarker is the line that tells a skill Jalon wrote from someone else's.
 const skillMarker = "<!-- Written by jalon init, which overwrites edits; jalon init --uninstall removes it. -->"

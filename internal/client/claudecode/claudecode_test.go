@@ -64,18 +64,19 @@ func TestCommands(t *testing.T) {
 	skillsDir := filepath.Join(home, ".claude", "skills")
 	resume, _ := skills.ReadFile("skills/jalon-resume/SKILL.md")
 	handoff, _ := skills.ReadFile("skills/jalon-handoff/SKILL.md")
+	advise, _ := skills.ReadFile("skills/jalon-advise/SKILL.md")
 	old := []byte("---\nname: jalon\n---\n" + skillMarker + "\n")
 	for _, tt := range []struct {
-		name            string
-		files           map[string][]byte // skill folder: content
-		resume, handoff string
+		name                    string
+		files                   map[string][]byte // skill folder: content
+		resume, handoff, advise string
 	}{
-		{"no skill", nil, "", ""},
-		{"someone else's skills", map[string][]byte{"jalon-resume": []byte("---\nname: jalon-resume\n---\n"), "jalon-handoff": []byte("x")}, "", ""},
-		{"jalon's skills", map[string][]byte{"jalon-resume": resume, "jalon-handoff": handoff}, "/jalon-resume", "/jalon-handoff"},
-		{"resume only", map[string][]byte{"jalon-resume": resume}, "/jalon-resume", ""},
+		{"no skill", nil, "", "", ""},
+		{"someone else's skills", map[string][]byte{"jalon-resume": []byte("---\nname: jalon-resume\n---\n"), "jalon-handoff": []byte("x"), "jalon-advise": []byte("x")}, "", "", ""},
+		{"jalon's skills", map[string][]byte{"jalon-resume": resume, "jalon-handoff": handoff, "jalon-advise": advise}, "/jalon-resume", "/jalon-handoff", "/jalon-advise"},
+		{"resume only", map[string][]byte{"jalon-resume": resume}, "/jalon-resume", "", ""},
 		// The 0.2.0 skill's /jalon resume is never offered: jalon init replaces it.
-		{"0.2.0 skill only", map[string][]byte{"jalon": old}, "", ""},
+		{"0.2.0 skill only", map[string][]byte{"jalon": old}, "", "", ""},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			if err := os.RemoveAll(skillsDir); err != nil {
@@ -89,7 +90,7 @@ func TestCommands(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			want := client.Commands{Clear: "/clear", Compact: "/compact", Include: "@", Resume: tt.resume, Handoff: tt.handoff}
+			want := client.Commands{Clear: "/clear", Compact: "/compact", Include: "@", Resume: tt.resume, Handoff: tt.handoff, Advise: tt.advise}
 			if got := (Adapter{}).Commands(); got != want {
 				t.Errorf("commands = %+v, want %+v", got, want)
 			}
