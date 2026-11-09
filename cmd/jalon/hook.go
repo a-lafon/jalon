@@ -95,8 +95,10 @@ their text and not measured tokens; say in one line, in the section, which of th
 {list}`
 
 // outputsList is outputsLine with one line per result, largest first, or ""
-// when the tail found none: the advice is then unchanged. A result whose call
-// Jalon did not read is named by neither tool nor target.
+// when the tail found none: the advice is then unchanged. A result is given
+// neither tool nor target when the read did not reach the call it answers,
+// because the call is outside what was read, or past a compaction, or because
+// the collection stopped at its deadline before it.
 func outputsList(outputs []transcript.Output) string {
 	if len(outputs) == 0 {
 		return ""
@@ -105,7 +107,7 @@ func outputsList(outputs []transcript.Output) string {
 	for _, o := range outputs {
 		what := strings.TrimSpace(o.Tool + " " + o.Target)
 		if what == "" {
-			what = "a result whose tool call Jalon did not read"
+			what = "a result Jalon could not name"
 		}
 		list += "- " + what + ", about " + outputSize(o.Bytes) + "\n"
 	}
