@@ -90,8 +90,12 @@ func TestGoldenHook(t *testing.T) {
 		"heavy-start":       {[]string{typedPrompt("p0"), assistantLine(212_000)}, "repo", 1},
 		"heavy-start-grown": {[]string{typedPrompt("p0"), assistantLine(230_000), assistantLine(385_000)}, "repo", 1},
 		"no-usage":          {[]string{`{"type":"user"}` + "\n"}, "repo", 1},
-		// Below the threshold, the user asks for a handoff.
-		"handoff-asked": {[]string{typedPrompt("p0"), assistantLine(50_000), assistantLine(120_000)}, "repo", 1},
+		// Below the threshold, the user asks for a handoff; the advice it sends
+		// names the largest tool results too, for the compact line it offers.
+		"handoff-asked": {[]string{typedPrompt("p0"), assistantLine(50_000),
+			toolUseLine("t1", "Read", "file_path", "/src/internal/parser/parser.go"), toolResultLine("t1", 12_000),
+			toolUseLine("t2", "Bash", "command", "go test ./..."), toolResultLine("t2", 5_000),
+			assistantLine(120_000)}, "repo", 1},
 		// Below the threshold, the user asks for the advice.
 		"advise-asked": {[]string{typedPrompt("p0"), assistantLine(50_000), assistantLine(120_000)}, "repo", 1},
 		// The agent cd'ed out of the project: the folder stays in the project.

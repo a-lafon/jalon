@@ -462,7 +462,10 @@ func askHandoff(dir string, adapter client.Adapter, p client.Prompt, tail client
 	if st.Proposed != "" {
 		written = lastHandoff(handoffDir, st.Proposed+"-")
 	}
-	body, ok := recordAdvice(dir, adapter, p, st, tail.CacheTTL, nil, now, written != "")
+	// The advice path's own read: this is an advice, it spends the budget and
+	// arms the reminder, and the compact line it also asks for is what the
+	// largest tool results make precise.
+	body, ok := recordAdvice(dir, adapter, p, st, tail.CacheTTL, adapter.ReadTail(p, "", true, "").Outputs, now, written != "")
 	if !ok {
 		return nil
 	}

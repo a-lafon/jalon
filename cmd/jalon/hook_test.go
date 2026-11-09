@@ -1780,6 +1780,9 @@ func TestAskedAdviceSendsTheThresholdBody(t *testing.T) {
 	body := func(t *testing.T, size int, text string) string {
 		t.Helper()
 		_, cfg := hookState(t, "s1", size)
+		// With a tool result in reach both bodies carry the list, so a list
+		// wired into one path and not the other shows up here.
+		appendTranscript(t, "s1", toolUseLine("t1", "Read", "file_path", "/src/parser.go"), toolResultLine("t1", 12_000))
 		writeJalonSkills(t)
 		raw := runPrompt(t, cfg, hookInputText("s1", repo, text))
 		var out hookOutput
@@ -1797,6 +1800,10 @@ func TestAskedAdviceSendsTheThresholdBody(t *testing.T) {
 	t.Run("threshold crossed", func(t *testing.T) { crossed = body(t, 212_000, "hi") })
 	if asked != crossed {
 		t.Errorf("the asked advice's body differs from the threshold advice's\n got: %q\nwant: %q", asked, crossed)
+	}
+	// The fixture must keep carrying the list, or the comparison proves nothing.
+	if !strings.Contains(crossed, "- Read /src/parser.go, about ") {
+		t.Errorf("the threshold advice names no tool result: %q", crossed)
 	}
 }
 
