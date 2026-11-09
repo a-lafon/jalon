@@ -147,12 +147,25 @@ type step struct {
 	size    int  // input + cache read + cache creation tokens
 	fiveMin bool // cache writes to the 5-minute cache instead of the 1-hour one
 	section bool // the reply ends with a Jalon section, as the instruction asks
+	// tool, when set, makes the reply one tool call instead of text: the client
+	// runs it for real and comes back with its result, which the next step
+	// answers. {project} in an input value is the project's folder.
+	tool *toolCall
+}
+
+// toolCall is the tool_use block a step answers with.
+type toolCall struct {
+	name  string
+	input map[string]any
 }
 
 // fakeAPI is a Messages API that answers request n with script[n], or the last
 // step past the end, and records every request body.
 type fakeAPI struct {
 	script []step
+	// project fills {project} in a tool call's input, known only once the
+	// client's folder is made.
+	project string
 
 	mu     sync.Mutex
 	bodies []string
@@ -195,17 +208,29 @@ func (a *fakeAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	event("message_start", map[string]any{"type": "message_start", "message": map[string]any{
 		"id": fmt.Sprintf("msg_e2e_%d", len(a.bodies)), "type": "message", "role": "assistant",
 		"model": "claude-haiku-5-5", "content": []any{}, "stop_reason": nil, "stop_sequence": nil, "usage": usage}})
-	text := "ok"
-	if s.section {
-		text = "ok\n\n> **Jalon** — Compact: keep the plan."
+	stop := "end_turn"
+	if s.tool != nil {
+		in, _ := json.Marshal(s.tool.input)
+		event("content_block_start", map[string]any{"type": "content_block_start", "index": 0,
+			"content_block": map[string]any{"type": "tool_use", "id": fmt.Sprintf("toolu_e2e_%d", len(a.bodies)),
+				"name": s.tool.name, "input": map[string]any{}}})
+		event("content_block_delta", map[string]any{"type": "content_block_delta", "index": 0,
+			"delta": map[string]any{"type": "input_json_delta",
+				"partial_json": strings.ReplaceAll(string(in), "{project}", a.project)}})
+		stop = "tool_use"
+	} else {
+		text := "ok"
+		if s.section {
+			text = "ok\n\n> **Jalon** — Compact: keep the plan."
+		}
+		event("content_block_start", map[string]any{"type": "content_block_start", "index": 0,
+			"content_block": map[string]any{"type": "text", "text": ""}})
+		event("content_block_delta", map[string]any{"type": "content_block_delta", "index": 0,
+			"delta": map[string]any{"type": "text_delta", "text": text}})
 	}
-	event("content_block_start", map[string]any{"type": "content_block_start", "index": 0,
-		"content_block": map[string]any{"type": "text", "text": ""}})
-	event("content_block_delta", map[string]any{"type": "content_block_delta", "index": 0,
-		"delta": map[string]any{"type": "text_delta", "text": text}})
 	event("content_block_stop", map[string]any{"type": "content_block_stop", "index": 0})
 	event("message_delta", map[string]any{"type": "message_delta",
-		"delta": map[string]any{"stop_reason": "end_turn", "stop_sequence": nil}, "usage": map[string]any{"output_tokens": 5}})
+		"delta": map[string]any{"stop_reason": stop, "stop_sequence": nil}, "usage": map[string]any{"output_tokens": 5}})
 	event("message_stop", map[string]any{"type": "message_stop"})
 }
 
@@ -224,6 +249,9 @@ type claudeEnv struct {
 	settings string
 	api      *fakeAPI
 	baseURL  string
+	// allowed are the tools the client may run without asking, for a scenario
+	// whose script makes tool calls.
+	allowed string
 }
 
 // newClaude sets up the isolated client against a fake API serving script.
@@ -259,7 +287,7 @@ func newClaude(t *testing.T, typed bool, script ...step) *claudeEnv {
 	if err != nil {
 		t.Fatal(err)
 	}
-	api := &fakeAPI{script: script}
+	api := &fakeAPI{script: script, project: project}
 	srv := httptest.NewServer(api)
 	t.Cleanup(srv.Close)
 	e := &claudeEnv{t: t, home: t.TempDir(), project: project, api: api, baseURL: srv.URL}
@@ -302,6 +330,9 @@ func newClaude(t *testing.T, typed bool, script ...step) *claudeEnv {
 func (e *claudeEnv) run(prompt string) []string {
 	e.t.Helper()
 	args := []string{"-p", prompt, "--settings", e.settings, "--model", "claude-haiku-5-5"}
+	if e.allowed != "" {
+		args = append(args, "--allowedTools", e.allowed)
+	}
 	if id := e.session(); id != "" {
 		args = append(args, "--resume", id)
 	}
