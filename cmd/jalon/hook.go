@@ -124,6 +124,18 @@ the user prefers compacting. Give, before any file you write, `
 // an advice.
 const handoffAskedPrefix = "Jalon: handoff asked"
 
+// adviseOpening answers the client's advise command: the advice's own body, at
+// a size that did not trigger it, with the choice of option left to the model.
+const adviseOpening = `Jalon: the user typed {command} to ask for the reset advice of this conversation now; its context size did not
+trigger one. Recommend exactly one of the three options below, the one this conversation calls for; prefer none of them.
+Answer the user's message first.
+Then give, before any file you write, `
+
+// adviseAskedPrefix starts the message the user sees for the advise command.
+// It is not advisor.MessagePrefix, so the context report does not count it as
+// an advice: Jalon did not decide to give it.
+const adviseAskedPrefix = "Jalon: advice asked"
+
 // reminderPrefix starts the stop hook's reason when the reply lacks the section
 // asked at the start of the turn. The context report tells it from an advice
 // by its prefix, so a reminder never counts as a second advice.
@@ -214,6 +226,9 @@ func runPromptHook(ctx context.Context, args []string, stdin io.Reader, out io.W
 		tail := adapter.ReadTail(prompt, "", false, prev.Prompt)
 		if words, ok := handoffAsked(prompt.Text, adapter); ok {
 			return askHandoff(dir, adapter, prompt, tail, cfg, words, now)
+		}
+		if _, ok := adviseAsked(prompt.Text, adapter); ok {
+			return askAdvise(dir, adapter, prompt, tail, cfg, now)
 		}
 		st, ok := measure(dir, adapter, prompt, tail, cfg, now)
 		if !ok {
@@ -365,12 +380,23 @@ func runStopHook(ctx context.Context, args []string, stdin io.Reader, out io.Wri
 // handoffAsked tells whether text is the client's handoff command, alone or
 // followed by a space, and returns the words after it.
 func handoffAsked(text string, adapter client.Adapter) (string, bool) {
+	return commandAsked(text, adapter.Commands().Handoff)
+}
+
+// adviseAsked tells whether text is the client's advise command, alone or
+// followed by a space, and returns the words after it.
+func adviseAsked(text string, adapter client.Adapter) (string, bool) {
+	return commandAsked(text, adapter.Commands().Advise)
+}
+
+// commandAsked tells whether text is the command cmd, alone or followed by a
+// space, and returns the words after it.
+func commandAsked(text, cmd string) (string, bool) {
 	text = strings.TrimSpace(text)
 	// Only a command reads the client's skill files, not every prompt.
 	if !strings.HasPrefix(text, "/") {
 		return "", false
 	}
-	cmd := adapter.Commands().Handoff
 	rest, ok := strings.CutPrefix(text, cmd)
 	if cmd == "" || !ok || rest != "" && !unicode.IsSpace(rune(rest[0])) {
 		return "", false
@@ -412,6 +438,29 @@ func askHandoff(dir string, adapter client.Adapter, p client.Prompt, tail client
 	}
 	opening := strings.NewReplacer("{command}", adapter.Commands().Handoff, "{focus}", focus, "{update}", update).Replace(handoffOpening)
 	reply, err := adapter.Reply(message, opening+body)
+	if err != nil {
+		return nil
+	}
+	return reply
+}
+
+// askAdvise answers the advise command at any size: it records the size as for
+// any prompt, then records the advice as a threshold one, so the budget is
+// spent, the stop hook's reminder works, and a handoff the model writes gets
+// its name, parent and thread. Which of the three options fits is left to the
+// model: the user asked for the advice, not for one of its options.
+func askAdvise(dir string, adapter client.Adapter, p client.Prompt, tail client.Tail, cfg config.Config, now time.Time) []byte {
+	measure(dir, adapter, p, tail, cfg, now)
+	st, _ := advisor.Load(dir, p.Session)
+	body, ok := recordAdvice(dir, adapter, p, st, tail.CacheTTL, now, false)
+	if !ok {
+		return nil
+	}
+	message := adviseAskedPrefix + "."
+	if st.Size > 0 {
+		message = adviseAskedPrefix + " at " + cli.TokensK(float64(st.Size)) + " tokens."
+	}
+	reply, err := adapter.Reply(message, strings.ReplaceAll(adviseOpening, "{command}", adapter.Commands().Advise)+body)
 	if err != nil {
 		return nil
 	}

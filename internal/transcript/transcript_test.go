@@ -630,6 +630,20 @@ func TestAskedHandoffIsNotAnAdvice(t *testing.T) {
 	}
 }
 
+// The advise command's message carries its own prefix too: adviseAskedPrefix
+// in cmd/jalon, which is not advisor.MessagePrefix.
+func TestAskedAdviceIsNotAnAdvice(t *testing.T) {
+	lines := []string{
+		humanText("2026-10-06T08:00:00Z", "/jalon-advise"),
+		advice("a1", "2026-10-06T08:00:01Z", "Jalon: advice asked at 120K tokens."),
+		assistant("2026-10-06T08:00:02Z", "m1", 1, 120000, 0, 5),
+	}
+	c, err := NewReader().Read("/p/s1.jsonl", strings.NewReader(strings.Join(lines, "\n")))
+	if err != nil || len(c.Advices) != 0 {
+		t.Errorf("advices = %+v, %v, want none", c.Advices, err)
+	}
+}
+
 func TestStartOf(t *testing.T) {
 	for _, tc := range []struct {
 		in   string

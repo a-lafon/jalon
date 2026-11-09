@@ -86,6 +86,8 @@ func TestGoldenHook(t *testing.T) {
 		"no-usage":          {[]string{`{"type":"user"}` + "\n"}, "repo", 1},
 		// Below the threshold, the user asks for a handoff.
 		"handoff-asked": {[]string{typedPrompt("p0"), assistantLine(50_000), assistantLine(120_000)}, "repo", 1},
+		// Below the threshold, the user asks for the advice.
+		"advise-asked": {[]string{typedPrompt("p0"), assistantLine(50_000), assistantLine(120_000)}, "repo", 1},
 		// The agent cd'ed out of the project: the folder stays in the project.
 		"crossing-moved-cwd": {[]string{typedPrompt("p0"), assistantLine(50_000), assistantLine(212_000)}, "plain", 1},
 	}
@@ -93,7 +95,7 @@ func TestGoldenHook(t *testing.T) {
 	projects := map[string]string{"crossing-moved-cwd": "repo/sub"}
 	// The prompt of the cases that type a command, with Jalon's skills installed;
 	// "hi" for the others.
-	commands := map[string]string{"handoff-asked": "/jalon-handoff the parser work"}
+	commands := map[string]string{"handoff-asked": "/jalon-handoff the parser work", "advise-asked": "/jalon-advise"}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			dir := useHome(t)
