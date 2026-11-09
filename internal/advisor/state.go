@@ -81,15 +81,16 @@ func Load(dir, id string) (Session, bool) {
 }
 
 // Record stores the latest size of a session, the ID of the prompt of its turn,
-// and that the session is typed in by a person once typed is true. When the
-// size fell under half of the previous one, as after a compaction, the last
-// advised size is reset.
-func Record(dir, id string, size int, now time.Time, prompt string, typed bool) error {
+// and that the session is typed in by a person once typed is true. The last
+// advised size is reset when compacted says the client recorded a compaction,
+// or when the size fell under half of the previous one: a client that reports
+// no compaction is left with the size test alone.
+func Record(dir, id string, size int, now time.Time, prompt string, typed, compacted bool) error {
 	if !SafeSessionID(id) {
 		return errors.New("unsafe session id")
 	}
 	s, _ := Load(dir, id)
-	if Compacted(s.Size, size) {
+	if compacted || Compacted(s.Size, size) {
 		s.LastAdvised = 0
 	}
 	s.Size, s.Recorded, s.Prompt = size, now, prompt

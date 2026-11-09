@@ -222,7 +222,7 @@ func runPromptHook(ctx context.Context, args []string, stdin io.Reader, out io.W
 		// only now, since in a program's session the search reads 8 MB.
 		if !st.Typed {
 			if !adapter.ReadTail(prompt, "", true).Typed ||
-				advisor.Record(dir, prompt.Session, st.Size, now, prompt.ID, true) != nil {
+				advisor.Record(dir, prompt.Session, st.Size, now, prompt.ID, true, false) != nil {
 				return nil
 			}
 		}
@@ -456,7 +456,7 @@ func measure(dir string, adapter client.Adapter, p client.Prompt, tail client.Ta
 		}
 		return advisor.Session{}, false
 	}
-	if advisor.Record(dir, p.Session, tail.Size, now, p.ID, tail.Typed) != nil {
+	if advisor.Record(dir, p.Session, tail.Size, now, p.ID, tail.Typed, false) != nil {
 		return advisor.Session{}, false
 	}
 	st, ok := advisor.Load(dir, p.Session)
