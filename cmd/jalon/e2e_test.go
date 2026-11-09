@@ -129,6 +129,42 @@ func TestE2EWriteBackNote(t *testing.T) {
 	}
 }
 
+// The defect this guards: between the compaction and the next typed prompt no
+// size is recorded, and the context regrows past half of what it was, so the
+// size test alone keeps the stale advice and the note with it.
+func TestE2ECompactionSeenWithoutATypedPrompt(t *testing.T) {
+	// Given a typed session advised at its third prompt, with the handoff written
+	c := newClaude(t, true, step{size: 121_000, section: true}, step{size: 221_000, section: true},
+		step{size: 221_000, section: true}, step{size: 221_000, section: true}, step{size: 150_000, section: true})
+	c.run("first")
+	c.run("second " + programMark)
+	c.run("third")
+	proposed, _ := c.state()["proposed"].(string)
+	if proposed == "" {
+		t.Fatal("no handoff name proposed")
+	}
+	handoff := filepath.Join(c.project, ".jalon", "handoffs", proposed+"-plan.md")
+	if err := os.MkdirAll(filepath.Dir(handoff), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(handoff, []byte("Session: x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// When the user compacts and a turn no person typed regrows the context past
+	// half of what it was, before the next typed prompt
+	c.run("/compact")
+	c.run("<task-notification>the background build finished</task-notification> " + programMark)
+	reqs := c.run("fourth")
+	// Then the compaction was recognised all the same: the advice is cleared and
+	// the note stops
+	if st := c.state(); st["last_advised"] != float64(0) {
+		t.Errorf("state = %v, want last_advised back at 0", st)
+	}
+	if holding(reqs, "was written at the last advice") > 0 {
+		t.Error("the prompt after the compaction got the write-back note")
+	}
+}
+
 func TestE2ETranscriptFieldsJalonReads(t *testing.T) {
 	// Given one prompt answered with 121K of context written to the 5-minute cache
 	c := newClaude(t, true, step{size: 121_000, fiveMin: true})

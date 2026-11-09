@@ -87,6 +87,8 @@ Jalon advises; you act. It never:
 - **sends anything anywhere**: it makes no network call, and reads your transcripts on your machine;
 - **moves, edits or deletes a handoff**.
 
+What it reads from a transcript belongs to a format internal to Claude Code, not a published one: the usage of the last request, which gives the context size, and the `compact_boundary` entry, which tells Jalon a compaction reset the conversation. Should that entry disappear in a later version, Jalon falls back to the size test, a size that fell under half the previous one.
+
 It writes only:
 
 - **the advice**, added to the model's context:
