@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+	"slices"
 	"time"
 
 	"github.com/a-lafon/jalon/internal/advisor"
 	"github.com/a-lafon/jalon/internal/client"
+	"github.com/a-lafon/jalon/internal/transcript"
 )
 
 // Tail reads: transcripts reach tens of MB and the context size is the usage of
@@ -20,6 +22,16 @@ const (
 
 // readAt reads the transcript; tests count the bytes it reads.
 var readAt = (*os.File).ReadAt
+
+// maxOutputs is how many of the largest tool results a tail reports.
+const maxOutputs = 3
+
+// collectBudget bounds the collection of those results, well inside the
+// hook's own limit: unlike the rest of the scan it has no early exit, it walks
+// the whole window. The hook returns nothing at all when it overruns, so
+// losing the advice to the collection would be worse than an advice with no
+// list; past the budget the scan keeps what it has and stops collecting.
+var collectBudget = 100 * time.Millisecond
 
 // readTail reads the end of the transcript at path once. The size is the main
 // conversation's context, as of the end of the transcript: the first of these
@@ -44,6 +56,9 @@ var readAt = (*os.File).ReadAt
 // to the start of what was read. It never widens the window: a boundary
 // outside it shows as false.
 //
+// With typed, Outputs are also collected: the largest tool results of what was
+// read, which only the advice path asks for, within collectBudget.
+//
 // Lines that cannot be parsed, including the partial first line of a read, are
 // skipped. It reads the last 1 MB, then up to 8 MB until it finds what it looks
 // for.
@@ -57,6 +72,7 @@ func readTail(path, promptID string, typed bool, since string) client.Tail {
 	if err != nil {
 		return client.Tail{}
 	}
+	deadline := time.Now().Add(collectBudget)
 	for window := int64(tailStart); ; window *= 8 {
 		window = min(window, tailMax)
 		start := max(fi.Size()-window, 0)
@@ -72,7 +88,7 @@ func readTail(path, promptID string, typed bool, since string) client.Tail {
 				buf = nil
 			}
 		}
-		tail, sized := scanTail(buf, promptID, typed, since)
+		tail, sized := scanTail(buf, promptID, typed, since, deadline)
 		if sized && (!typed || tail.Typed) || start == 0 || window >= tailMax {
 			return tail
 		}
@@ -110,13 +126,16 @@ var (
 	usageMark   = []byte(`"usage"`)
 	compactMark = []byte(`compact_boundary`)
 	humanMark   = []byte(`"human"`)
+	resultMark  = []byte(`"tool_result"`)
+	useMark     = []byte(`"tool_use"`)
 	sectionMark = []byte(advisor.SectionMark)
 )
 
 // scanTail scans the lines of buf from the end, until the size, the compaction
 // and, with typed, a typed prompt are found. sized is true when an entry
-// decided the size, even to say there is none.
-func scanTail(buf []byte, promptID string, typed bool, since string) (tail client.Tail, sized bool) {
+// decided the size, even to say there is none. With typed it also collects the
+// largest tool results, until deadline passes.
+func scanTail(buf []byte, promptID string, typed bool, since string, deadline time.Time) (tail client.Tail, sized bool) {
 	// The section is looked for back to the turn's own prompt: the model gives
 	// it before the handoff file, so it is not always the turn's last message.
 	section := typed && promptID != ""
@@ -124,10 +143,17 @@ func scanTail(buf []byte, promptID string, typed bool, since string) (tail clien
 	// size-bearing entry, and after a compaction followed by work that reported
 	// back that entry comes long before the boundary.
 	boundary := true
-	for end := len(buf); end > 0 && (!sized || typed && !tail.Typed || section || boundary); {
+	// The largest tool results are collected on the advice path only, the read
+	// that looks for a typed prompt: this one has no early exit, it walks the
+	// whole window, so it runs on its own deadline and yields what it has.
+	collect := typed
+	for end := len(buf); end > 0 && (!sized || typed && !tail.Typed || section || boundary || collect); {
 		start := bytes.LastIndexByte(buf[:end], '\n') + 1
 		line := buf[start:end]
 		end = start - 1
+		if collect && time.Now().After(deadline) {
+			collect = false
+		}
 		// Cheap filter before parsing: most lines are none of these.
 		lookSize := !sized && (bytes.Contains(line, usageMark) || bytes.Contains(line, compactMark))
 		lookTyped := typed && !tail.Typed && bytes.Contains(line, humanMark)
@@ -135,12 +161,22 @@ func scanTail(buf []byte, promptID string, typed bool, since string) (tail clien
 		lookBoundary := boundary && bytes.Contains(line, compactMark)
 		// The prompt the search stops at is a typed one, like the one typed looks for.
 		lookSince := boundary && since != "" && bytes.Contains(line, humanMark)
-		if !lookSize && !lookTyped && !lookSection && !lookBoundary && !lookSince {
+		lookResult := collect && bytes.Contains(line, resultMark)
+		// Scanning backwards, a result is met before the call it answers, and
+		// one that did not make the list is never named.
+		lookUse := collect && len(tail.Outputs) > 0 && bytes.Contains(line, useMark)
+		if !lookSize && !lookTyped && !lookSection && !lookBoundary && !lookSince && !lookResult && !lookUse {
 			continue
 		}
 		var e tailEntry
 		if json.Unmarshal(line, &e) != nil {
 			continue
+		}
+		switch {
+		case lookResult && e.Type == "user" && !e.IsSidechain:
+			tail.Outputs = keepLargest(tail.Outputs, transcript.ToolResults(e.Message.Content))
+		case lookUse && e.Type == "assistant" && !e.IsSidechain:
+			nameOutputs(tail.Outputs, transcript.ToolCalls(e.Message.Content))
 		}
 		// Apart, since the entry that gave the section often carries the size too.
 		if lookSection && e.Type == "assistant" && !e.IsSidechain && messageSection(e.Message.Content) {
@@ -200,4 +236,39 @@ func messageSection(content json.RawMessage) bool {
 		}
 	}
 	return false
+}
+
+// keepLargest merges found into kept, the maxOutputs largest results so far,
+// largest first.
+func keepLargest(kept, found []transcript.Output) []transcript.Output {
+	for _, o := range found {
+		if len(kept) == maxOutputs && o.Bytes <= kept[maxOutputs-1].Bytes {
+			continue
+		}
+		i := 0
+		for i < len(kept) && kept[i].Bytes >= o.Bytes {
+			i++
+		}
+		kept = slices.Insert(kept, i, o)
+		if len(kept) > maxOutputs {
+			kept = kept[:maxOutputs]
+		}
+	}
+	return kept
+}
+
+// nameOutputs gives the kept results the tool and target of the calls they
+// answer. A result whose call is not in what was read keeps none: the tool is
+// never guessed from the result alone.
+func nameOutputs(kept, calls []transcript.Output) {
+	for _, c := range calls {
+		if c.ID == "" {
+			continue
+		}
+		for i := range kept {
+			if kept[i].ID == c.ID {
+				kept[i].Tool, kept[i].Target = c.Tool, c.Target
+			}
+		}
+	}
 }

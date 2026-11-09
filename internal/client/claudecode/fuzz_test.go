@@ -3,6 +3,7 @@ package claudecode
 import (
 	"os"
 	"testing"
+	"time"
 )
 
 // FuzzScanTail checks that scanning the end of a transcript never panics. The
@@ -16,6 +17,6 @@ func FuzzScanTail(f *testing.F) {
 	f.Add([]byte("{\"type\":\"assistant\",\"message\":{\"usage\":{}}}\n"), "abc", true, "p1")
 	f.Add([]byte("\n\n{\"type\":"), "", false, "")
 	f.Fuzz(func(t *testing.T, buf []byte, promptID string, typed bool, since string) {
-		scanTail(buf, promptID, typed, since)
+		scanTail(buf, promptID, typed, since, time.Now().Add(collectBudget))
 	})
 }

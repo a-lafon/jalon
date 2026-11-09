@@ -5,7 +5,11 @@
 // know nothing of any client.
 package client
 
-import "time"
+import (
+	"time"
+
+	"github.com/a-lafon/jalon/internal/transcript"
+)
 
 // Prompt is a prompt event as the client reports it.
 type Prompt struct {
@@ -50,6 +54,16 @@ type Tail struct {
 	// a compaction further back than that, or than the part the client's record
 	// was read from, shows as false.
 	Compacted bool
+	// Outputs are the largest tool results the read found, largest first, at
+	// most three. They cover only the part of the conversation that was read,
+	// never the whole of it, so they are the largest Jalon could see and not
+	// the largest there are. Their sizes are the bytes of the result's own
+	// text, an estimate, never a token count. A result whose call was not read
+	// keeps its size and has no tool name: none is guessed. They are collected
+	// only by the read that looks for a typed prompt, the one a caller makes
+	// when it is about to advise, and that read gives up collecting rather
+	// than overrun its budget, so an empty list means nothing more than that.
+	Outputs []transcript.Output
 }
 
 // Stop is a stop event: the model ended its turn.
