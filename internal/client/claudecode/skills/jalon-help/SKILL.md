@@ -12,6 +12,7 @@ Jalon's commands in Claude Code:
 - `/jalon-resume [path or words]`: resume from this project's latest handoff, or the one named.
 - `/jalon-recap [path or words]`: sum up a whole thread of handoffs.
 - `/jalon-handoff [what to stress]`: write a handoff of this conversation now.
+- `/jalon-advise`: give the reset advice for this conversation now, at any size.
 - `/jalon-report [flags]`: run `jalon context-report` and explain it.
 - `/jalon-help`: this list.
 
