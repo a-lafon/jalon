@@ -1,6 +1,7 @@
 package claudecode
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -76,7 +77,7 @@ func TestCacheTTL(t *testing.T) {
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			if got := readTail(writeLines(t, tt.lines...), "", false).CacheTTL; got != tt.want {
+			if got := readTail(writeLines(t, tt.lines...), "", false, "").CacheTTL; got != tt.want {
 				t.Errorf("CacheTTL = %v, want %v", got, tt.want)
 			}
 		})
@@ -153,7 +154,7 @@ func TestContextSizeOfALargeTranscriptReadsOnlyTheLastMB(t *testing.T) {
 
 // sizeOf is the size readTail finds, and whether it found one.
 func sizeOf(path string) (int, bool) {
-	tail := readTail(path, "", false)
+	tail := readTail(path, "", false, "")
 	return tail.Size, tail.Size > 0
 }
 
@@ -183,13 +184,13 @@ func TestReadTailTyped(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			path := writeLines(t, tt.lines...)
-			if got := readTail(path, "", true); got.Typed != tt.anyTyped {
+			if got := readTail(path, "", true, ""); got.Typed != tt.anyTyped {
 				t.Errorf("any prompt typed = %v, want %v", got.Typed, tt.anyTyped)
 			}
-			if got := readTail(path, "", false); got.Typed {
+			if got := readTail(path, "", false, ""); got.Typed {
 				t.Error("typed found without being looked for")
 			}
-			if got := readTail(path, "p1", true); got.Typed != tt.p1Typed {
+			if got := readTail(path, "p1", true, ""); got.Typed != tt.p1Typed {
 				t.Errorf("p1 typed = %v, want %v", got.Typed, tt.p1Typed)
 			}
 		})
@@ -218,14 +219,14 @@ func TestReadTailSection(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			path := writeLines(t, tt.lines...)
-			if got := readTail(path, "p1", true); got.Section != tt.want {
+			if got := readTail(path, "p1", true, ""); got.Section != tt.want {
 				t.Errorf("section = %v, want %v", got.Section, tt.want)
 			}
 			// It is looked for only with the prompt ID that bounds the turn.
-			if got := readTail(path, "", true); got.Section {
+			if got := readTail(path, "", true, ""); got.Section {
 				t.Error("section found without a prompt ID")
 			}
-			if got := readTail(path, "p1", false); got.Section {
+			if got := readTail(path, "p1", false, ""); got.Section {
 				t.Error("section found without being looked for")
 			}
 		})
@@ -243,7 +244,7 @@ func TestReadTailSectionReadsNoMoreThanTheTypedPrompt(t *testing.T) {
 		return n, err
 	}
 	t.Cleanup(func() { readAt = saved })
-	if got := readTail(path, "p1", true); !got.Section || !got.Typed || got.Size != 250_000 {
+	if got := readTail(path, "p1", true, ""); !got.Section || !got.Typed || got.Size != 250_000 {
 		t.Fatalf("tail = %+v", got)
 	}
 	if read > tailStart {
@@ -254,11 +255,90 @@ func TestReadTailSectionReadsNoMoreThanTheTypedPrompt(t *testing.T) {
 func TestReadTailLooksForTheTypedPromptAsFarAsForTheSize(t *testing.T) {
 	// A long turn: the prompt is 3 MB before the end, the size at the end.
 	path := bigFile(t, []string{typedLine("p1", true, false)}, 3<<20, []string{sizeLine(250_000, false)})
-	if got := readTail(path, "p1", true); !got.Typed || got.Size != 250_000 {
+	if got := readTail(path, "p1", true, ""); !got.Typed || got.Size != 250_000 {
 		t.Errorf("tail = %+v, want p1 typed and size 250000", got)
 	}
 	path = bigFile(t, []string{typedLine("p1", true, false)}, 9<<20, []string{sizeLine(250_000, false)})
-	if got := readTail(path, "p1", true); got.Typed || got.Size != 250_000 {
+	if got := readTail(path, "p1", true, ""); got.Typed || got.Size != 250_000 {
 		t.Errorf("tail = %+v, want p1 out of reach past 8 MB and size 250000", got)
+	}
+}
+
+// compactedFixture is a session advised at 274K, compacted to 77K, then grown
+// back to 150K by fifteen entries a person did not type, then a typed prompt.
+const compactedFixture = "testdata/compacted-then-grown.jsonl"
+
+func TestReadTailFindsTheCompactionPastTheSize(t *testing.T) {
+	// The scan stops at the first size-bearing entry, which here is fifteen
+	// entries after the boundary.
+	got := readTail(compactedFixture, "", false, "p0")
+	if got.Size != 150_000 || !got.Compacted {
+		t.Errorf("tail = %+v, want size 150000 and the compaction", got)
+	}
+}
+
+func TestReadTailStopsTheCompactionSearchAtTheLastRecordedPrompt(t *testing.T) {
+	// p1 was typed after the compaction: the boundary is older than the last
+	// prompt recorded, so an advice given since must not be cleared by it.
+	if got := readTail(compactedFixture, "", false, "p1"); got.Size != 150_000 || got.Compacted {
+		t.Errorf("tail = %+v, want size 150000 and no compaction", got)
+	}
+	// With no prompt recorded, the search is bounded by what was read.
+	if got := readTail(compactedFixture, "", false, ""); !got.Compacted {
+		t.Errorf("tail = %+v, want the compaction", got)
+	}
+	// A conversation with no boundary reports none.
+	path := writeLines(t, typedLine("p0", true, false), sizeLine(150_000, false))
+	if got := readTail(path, "", false, "p0"); got.Compacted {
+		t.Errorf("tail = %+v, want no compaction", got)
+	}
+}
+
+// The fixture must be what Claude Code writes: every line parses.
+func TestCompactedFixtureParses(t *testing.T) {
+	raw, err := os.ReadFile(compactedFixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSuffix(string(raw), "\n"), "\n")
+	if len(lines) != 20 {
+		t.Errorf("%d lines, want 20: a prompt, two replies, the boundary, fifteen entries and a prompt", len(lines))
+	}
+	for i, line := range lines {
+		var e tailEntry
+		if err := json.Unmarshal([]byte(line), &e); err != nil || e.Type == "" {
+			t.Errorf("line %d skipped: %v", i+1, err)
+		}
+	}
+}
+
+// The compaction is looked for on every prompt: it must cost no more than the
+// read it is part of. The figures are reported in the change's design notes.
+func TestReadTailCostOfTheCompactionSearch(t *testing.T) {
+	raw, err := os.ReadFile(compactedFixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture := strings.Split(strings.TrimSuffix(string(raw), "\n"), "\n")
+	timed := func(path, since string) time.Duration {
+		readTail(path, "", false, since) // warm the page cache
+		start := time.Now()
+		for range 50 {
+			readTail(path, "", false, since)
+		}
+		return time.Since(start) / 50
+	}
+	// The common case: the fixture at the end of a 1 MB tail, the search
+	// stopping at the prompt last recorded.
+	bounded := timed(bigFile(t, nil, 1<<20, fixture), "p0")
+	// The worst case: nothing recorded and no boundary in the window, so every
+	// line of it is looked at.
+	whole := timed(bigFile(t, nil, 1<<20, []string{sizeLine(150_000, false)}), "")
+	// What the read cost before the search: it stopped at the first entry from
+	// the end that gave the size, here a boundary that ends both searches.
+	exit := timed(bigFile(t, nil, 1<<20, []string{compact}), "")
+	t.Logf("prompt hook read of a 1 MB tail: %v bounded at the last prompt, %v scanning the whole window, %v stopping at the first entry", bounded, whole, exit)
+	if whole > 50*time.Millisecond {
+		t.Errorf("the read takes %v, well past the hook's 500ms budget", whole)
 	}
 }

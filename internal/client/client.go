@@ -45,6 +45,11 @@ type Tail struct {
 	// looked for only with a prompt ID, which bounds the turn, since the model
 	// gives the section before the handoff file and so need not end with it.
 	Section bool
+	// Compacted is true when the record shows the conversation was compacted
+	// since the prompt the read was bounded at. It is bounded by what was read:
+	// a compaction further back than that, or than the part the client's record
+	// was read from, shows as false.
+	Compacted bool
 }
 
 // Stop is a stop event: the model ended its turn.
@@ -98,8 +103,10 @@ type Adapter interface {
 	// ReadTail reads the end of the conversation of p once: the context size,
 	// and with typed, whether a prompt typed by a person shows, the one with ID
 	// promptID when it is not "". Looking for a typed prompt can read much
-	// further back, so it is asked for only before advice.
-	ReadTail(p Prompt, promptID string, typed bool) Tail
+	// further back, so it is asked for only before advice. A compaction is
+	// looked for back to the prompt with ID since, the last one the caller
+	// recorded, and through what was read when it is "".
+	ReadTail(p Prompt, promptID string, typed bool, since string) Tail
 	// ContextFloor is the size in tokens of the conversation's first request,
 	// which a reset cannot remove, and false when it cannot be told yet.
 	ContextFloor(Prompt) (int, bool)

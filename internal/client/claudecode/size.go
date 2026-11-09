@@ -39,10 +39,15 @@ var readAt = (*os.File).ReadAt
 // program drives has none, so looking for it reads the whole 8 MB: the hooks
 // ask for it only when they are about to advise.
 //
+// Compacted is whether a compact_boundary entry shows after the entry of the
+// prompt with ID since, the last one the caller recorded; with no since, back
+// to the start of what was read. It never widens the window: a boundary
+// outside it shows as false.
+//
 // Lines that cannot be parsed, including the partial first line of a read, are
 // skipped. It reads the last 1 MB, then up to 8 MB until it finds what it looks
 // for.
-func readTail(path, promptID string, typed bool) client.Tail {
+func readTail(path, promptID string, typed bool, since string) client.Tail {
 	f, err := os.Open(path)
 	if err != nil {
 		return client.Tail{}
@@ -67,7 +72,7 @@ func readTail(path, promptID string, typed bool) client.Tail {
 				buf = nil
 			}
 		}
-		tail, sized := scanTail(buf, promptID, typed)
+		tail, sized := scanTail(buf, promptID, typed, since)
 		if sized && (!typed || tail.Typed) || start == 0 || window >= tailMax {
 			return tail
 		}
@@ -108,14 +113,18 @@ var (
 	sectionMark = []byte(advisor.SectionMark)
 )
 
-// scanTail scans the lines of buf from the end, until the size and, with typed,
-// a typed prompt are found. sized is true when an entry decided the size, even
-// to say there is none.
-func scanTail(buf []byte, promptID string, typed bool) (tail client.Tail, sized bool) {
+// scanTail scans the lines of buf from the end, until the size, the compaction
+// and, with typed, a typed prompt are found. sized is true when an entry
+// decided the size, even to say there is none.
+func scanTail(buf []byte, promptID string, typed bool, since string) (tail client.Tail, sized bool) {
 	// The section is looked for back to the turn's own prompt: the model gives
 	// it before the handoff file, so it is not always the turn's last message.
 	section := typed && promptID != ""
-	for end := len(buf); end > 0 && (!sized || typed && !tail.Typed || section); {
+	// The compaction is looked for on purpose: the scan stops at the first
+	// size-bearing entry, and after a compaction followed by work that reported
+	// back that entry comes long before the boundary.
+	boundary := true
+	for end := len(buf); end > 0 && (!sized || typed && !tail.Typed || section || boundary); {
 		start := bytes.LastIndexByte(buf[:end], '\n') + 1
 		line := buf[start:end]
 		end = start - 1
@@ -123,7 +132,10 @@ func scanTail(buf []byte, promptID string, typed bool) (tail client.Tail, sized 
 		lookSize := !sized && (bytes.Contains(line, usageMark) || bytes.Contains(line, compactMark))
 		lookTyped := typed && !tail.Typed && bytes.Contains(line, humanMark)
 		lookSection := section && bytes.Contains(line, sectionMark)
-		if !lookSize && !lookTyped && !lookSection {
+		lookBoundary := boundary && bytes.Contains(line, compactMark)
+		// The prompt the search stops at is a typed one, like the one typed looks for.
+		lookSince := boundary && since != "" && bytes.Contains(line, humanMark)
+		if !lookSize && !lookTyped && !lookSection && !lookBoundary && !lookSince {
 			continue
 		}
 		var e tailEntry
@@ -133,6 +145,14 @@ func scanTail(buf []byte, promptID string, typed bool) (tail client.Tail, sized 
 		// Apart, since the entry that gave the section often carries the size too.
 		if lookSection && e.Type == "assistant" && !e.IsSidechain && messageSection(e.Message.Content) {
 			tail.Section, section = true, false
+		}
+		// Apart too: the boundary entry carries the size, and the prompt the
+		// search stops at is the one typed matches.
+		switch {
+		case lookBoundary && e.Type == "system" && e.Subtype == "compact_boundary":
+			tail.Compacted, boundary = true, false
+		case lookSince && e.Type == "user" && !e.IsSidechain && e.Origin.Kind == "human" && e.PromptID == since:
+			boundary = false
 		}
 		switch {
 		case lookTyped && e.Type == "user" && !e.IsSidechain && e.Origin.Kind == "human":

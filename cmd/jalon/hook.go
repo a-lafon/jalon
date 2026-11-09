@@ -202,12 +202,16 @@ func runPromptHook(ctx context.Context, args []string, stdin io.Reader, out io.W
 		// resume line holds it. Only the session's first prompt written by a
 		// person is read, when the hook holds no state for it yet: a later path
 		// is a mention, not a resume.
-		if _, seen := advisor.Load(dir, prompt.Session); prompt.Dir != "" && !seen {
+		prev, seen := advisor.Load(dir, prompt.Session)
+		if prompt.Dir != "" && !seen {
 			if name := resumedHandoff(prompt.Text, projectRoot(prompt.Dir)); name != "" {
 				_ = advisor.SetHandoff(dir, prompt.Session, name, threadOf(name), "")
 			}
 		}
-		tail := adapter.ReadTail(prompt, "", false)
+		// A compaction is looked for back to the prompt last recorded: what came
+		// before it was already measured, and the work since may have regrown the
+		// context past the size test.
+		tail := adapter.ReadTail(prompt, "", false, prev.Prompt)
 		if words, ok := handoffAsked(prompt.Text, adapter); ok {
 			return askHandoff(dir, adapter, prompt, tail, cfg, words, now)
 		}
@@ -221,8 +225,8 @@ func runPromptHook(ctx context.Context, args []string, stdin io.Reader, out io.W
 		// typed prompt before it shows the session is typed in; it is looked for
 		// only now, since in a program's session the search reads 8 MB.
 		if !st.Typed {
-			if !adapter.ReadTail(prompt, "", true).Typed ||
-				advisor.Record(dir, prompt.Session, st.Size, now, prompt.ID, true, false) != nil {
+			if !adapter.ReadTail(prompt, "", true, "").Typed ||
+				advisor.Record(dir, prompt.Session, st.Size, now, prompt.ID, true, tail.Compacted) != nil {
 				return nil
 			}
 		}
@@ -291,7 +295,7 @@ func runStopHook(ctx context.Context, args []string, stdin io.Reader, out io.Wri
 		// block would replace it. Only a turn whose prompt a person typed is
 		// blocked; that is looked for only before blocking, since in a program's
 		// session the search reads 8 MB.
-		typed := func() bool { return adapter.ReadTail(ev.Prompt, ev.ID, true).Typed }
+		typed := func() bool { return adapter.ReadTail(ev.Prompt, ev.ID, true, "").Typed }
 		cfg, loaded := loadConfig(flags, *configPath)
 		if !loaded || !cfg.Context.Enabled {
 			return nil
@@ -303,13 +307,13 @@ func runStopHook(ctx context.Context, args []string, stdin io.Reader, out io.Wri
 				return nil
 			}
 			// After a compaction during the turn, the advice is moot.
-			if advisor.Compacted(st.LastAdvised, adapter.ReadTail(ev.Prompt, "", false).Size) {
+			if advisor.Compacted(st.LastAdvised, adapter.ReadTail(ev.Prompt, "", false, "").Size) {
 				return nil
 			}
 			// The handoff file is written after the section, so the turn need not
 			// end with it: reminding then would show the user a second section.
 			// One read for both, in place of the typed one the block needs anyway.
-			if turn := adapter.ReadTail(ev.Prompt, ev.ID, true); turn.Section || !turn.Typed {
+			if turn := adapter.ReadTail(ev.Prompt, ev.ID, true, ""); turn.Section || !turn.Typed {
 				return nil
 			}
 			handoffDir := handoffFolder(ev.Dir)
@@ -329,7 +333,7 @@ func runStopHook(ctx context.Context, args []string, stdin io.Reader, out io.Wri
 			return reply
 		}
 
-		tail := adapter.ReadTail(ev.Prompt, "", false)
+		tail := adapter.ReadTail(ev.Prompt, "", false, st.Prompt)
 		st, ok = measure(dir, adapter, ev.Prompt, tail, cfg, now)
 		if !ok || !typed() {
 			return nil
@@ -456,7 +460,7 @@ func measure(dir string, adapter client.Adapter, p client.Prompt, tail client.Ta
 		}
 		return advisor.Session{}, false
 	}
-	if advisor.Record(dir, p.Session, tail.Size, now, p.ID, tail.Typed, false) != nil {
+	if advisor.Record(dir, p.Session, tail.Size, now, p.ID, tail.Typed, tail.Compacted) != nil {
 		return advisor.Session{}, false
 	}
 	st, ok := advisor.Load(dir, p.Session)
