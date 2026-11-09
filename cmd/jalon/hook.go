@@ -20,6 +20,7 @@ import (
 	"github.com/a-lafon/jalon/internal/client"
 	"github.com/a-lafon/jalon/internal/config"
 	"github.com/a-lafon/jalon/internal/handoff"
+	"github.com/a-lafon/jalon/internal/transcript"
 )
 
 // hookTimeout bounds the whole command: the hook runs before every prompt is
@@ -34,7 +35,8 @@ var hookTimeout = 500 * time.Millisecond
 // {dir} (the absolute handoff folder), {name} (the handoff file name prefix)
 // and {header} (the handoff's first lines) in the body, and so are the
 // client's commands: {clear}, {compact}, {resume}, the line that resumes
-// from the handoff (see resumeLine), and {update} (see updateLine).
+// from the handoff (see resumeLine), {update} (see updateLine) and
+// {outputs} (see outputsList).
 const (
 	promptOpening = `Jalon: this conversation holds about {tokens}K tokens of context. Answer the user's message first.
 Then give, before any file you write, `
@@ -61,7 +63,7 @@ Write option 2's handoff now, while the whole conversation is in context, with t
 result in its current state. Then recommend a compact whose line keeps the running work, what to do with its result, and
 the handoff's full path as the record to update when the work reports. Then give, in a code block, the line the user
 copies once the work has reported: {update}.
-{cache}Keep the section under 10 lines, apart from the handoff file. Give it in this reply only: do not repeat it in later replies.`
+{cache}{outputs}Keep the section under 10 lines, apart from the handoff file. Give it in this reply only: do not repeat it in later replies.`
 )
 
 // cacheLine fills {cache} when the cache lifetime is known: after a longer
@@ -81,6 +83,42 @@ func cacheLifetime(d time.Duration) string {
 	default:
 		return fmt.Sprintf("%d minutes", int(d.Minutes()))
 	}
+}
+
+// outputsLine fills {outputs} when the tail found the largest tool results of
+// what it read. They are the only figures the model has for what the context
+// holds, so the wording bounds them twice: they cover the part Jalon read, not
+// the conversation, and their sizes come from the text of the results, not
+// from any token count. {list} is one line per result.
+const outputsLine = `These are the largest tool results in the part of the conversation Jalon could read, their sizes estimated from
+their text and not measured tokens; say in one line, in the section, which of them the option you recommend drops:
+{list}`
+
+// outputsList is outputsLine with one line per result, largest first, or ""
+// when the tail found none: the advice is then unchanged. A result whose call
+// Jalon did not read is named by neither tool nor target.
+func outputsList(outputs []transcript.Output) string {
+	if len(outputs) == 0 {
+		return ""
+	}
+	list := ""
+	for _, o := range outputs {
+		what := strings.TrimSpace(o.Tool + " " + o.Target)
+		if what == "" {
+			what = "a result whose tool call Jalon did not read"
+		}
+		list += "- " + what + ", about " + outputSize(o.Bytes) + "\n"
+	}
+	return strings.ReplaceAll(outputsLine, "{list}", list)
+}
+
+// outputSize says n bytes in round terms: the figure is an estimate from the
+// result's text and is given as one.
+func outputSize(n int) string {
+	if n < 1024 {
+		return strconv.Itoa(n) + " bytes"
+	}
+	return strconv.Itoa(n/1024) + " KB"
 }
 
 // resumeRequest is what follows the handoff's path on the resume line. A new
@@ -238,14 +276,16 @@ func runPromptHook(ctx context.Context, args []string, stdin io.Reader, out io.W
 		// reply is the program's output. A program that resumes a session a person
 		// typed in is not told apart. The prompt is not in the transcript yet, so any
 		// typed prompt before it shows the session is typed in; it is looked for
-		// only now, since in a program's session the search reads 8 MB.
+		// only now, since in a program's session the search reads 8 MB. That read
+		// is the advice path's own: it also brings the largest tool results.
+		advice := adapter.ReadTail(prompt, "", true, "")
 		if !st.Typed {
-			if !adapter.ReadTail(prompt, "", true, "").Typed ||
+			if !advice.Typed ||
 				advisor.Record(dir, prompt.Session, st.Size, now, prompt.ID, true, tail.Compacted) != nil {
 				return nil
 			}
 		}
-		body, ok := recordAdvice(dir, adapter, prompt, st, tail.CacheTTL, now, false)
+		body, ok := recordAdvice(dir, adapter, prompt, st, tail.CacheTTL, advice.Outputs, now, false)
 		if !ok {
 			return nil
 		}
@@ -306,11 +346,6 @@ func runStopHook(ctx context.Context, args []string, stdin io.Reader, out io.Wri
 		if !ok || st.Prompt != ev.ID {
 			return nil
 		}
-		// A program that runs claude -p reads the last message as its output: a
-		// block would replace it. Only a turn whose prompt a person typed is
-		// blocked; that is looked for only before blocking, since in a program's
-		// session the search reads 8 MB.
-		typed := func() bool { return adapter.ReadTail(ev.Prompt, ev.ID, true, "").Typed }
 		cfg, loaded := loadConfig(flags, *configPath)
 		if !loaded || !cfg.Context.Enabled {
 			return nil
@@ -350,7 +385,16 @@ func runStopHook(ctx context.Context, args []string, stdin io.Reader, out io.Wri
 
 		tail := adapter.ReadTail(ev.Prompt, "", false, st.Prompt)
 		st, ok = measure(dir, adapter, ev.Prompt, tail, cfg, now)
-		if !ok || !typed() {
+		if !ok {
+			return nil
+		}
+		// A program that runs claude -p reads the last message as its output: a
+		// block would replace it. Only a turn whose prompt a person typed is
+		// blocked; that is looked for only before blocking, since in a program's
+		// session the search reads 8 MB. That read is the advice path's own: it
+		// also brings the largest tool results.
+		advice := adapter.ReadTail(ev.Prompt, ev.ID, true, "")
+		if !advice.Typed {
 			return nil
 		}
 		// A model may end its reply with a section of its own, as the advice of an
@@ -360,7 +404,7 @@ func runStopHook(ctx context.Context, args []string, stdin io.Reader, out io.Wri
 			_ = advisor.MarkAdvised(dir, ev.Session, st.Size, now, ev.ID, adviceVersion())
 			return nil
 		}
-		body, ok := recordAdvice(dir, adapter, ev.Prompt, st, tail.CacheTTL, now, false)
+		body, ok := recordAdvice(dir, adapter, ev.Prompt, st, tail.CacheTTL, advice.Outputs, now, false)
 		if !ok {
 			return nil
 		}
@@ -418,7 +462,7 @@ func askHandoff(dir string, adapter client.Adapter, p client.Prompt, tail client
 	if st.Proposed != "" {
 		written = lastHandoff(handoffDir, st.Proposed+"-")
 	}
-	body, ok := recordAdvice(dir, adapter, p, st, tail.CacheTTL, now, written != "")
+	body, ok := recordAdvice(dir, adapter, p, st, tail.CacheTTL, nil, now, written != "")
 	if !ok {
 		return nil
 	}
@@ -452,7 +496,9 @@ func askHandoff(dir string, adapter client.Adapter, p client.Prompt, tail client
 func askAdvise(dir string, adapter client.Adapter, p client.Prompt, tail client.Tail, cfg config.Config, now time.Time) []byte {
 	measure(dir, adapter, p, tail, cfg, now)
 	st, _ := advisor.Load(dir, p.Session)
-	body, ok := recordAdvice(dir, adapter, p, st, tail.CacheTTL, now, false)
+	// The advice path's own read, as a threshold advice makes: the body it
+	// sends is the same one, the largest tool results included.
+	body, ok := recordAdvice(dir, adapter, p, st, tail.CacheTTL, adapter.ReadTail(p, "", true, "").Outputs, now, false)
 	if !ok {
 		return nil
 	}
@@ -532,8 +578,9 @@ func measure(dir string, adapter client.Adapter, p client.Prompt, tail client.Ta
 // shown: it names the next handoff, creates its folder, and records the advice
 // at the prompt of p, so the next prompt does not repeat it. With keep, it
 // keeps the state's proposed name, parent and thread instead. It returns the
-// instruction body, filled in, with the cache lifetime ttl when it is not 0.
-func recordAdvice(dir string, adapter client.Adapter, p client.Prompt, st advisor.Session, ttl time.Duration, now time.Time, keep bool) (string, bool) {
+// instruction body, filled in, with the cache lifetime ttl when it is not 0
+// and the largest tool results outputs names when there are any.
+func recordAdvice(dir string, adapter client.Adapter, p client.Prompt, st advisor.Session, ttl time.Duration, outputs []transcript.Output, now time.Time, keep bool) (string, bool) {
 	handoffDir := handoffFolder(p.Dir)
 	parent, thread, name := st.Parent, st.Thread, st.Proposed
 	if !keep {
@@ -561,7 +608,7 @@ func recordAdvice(dir string, adapter client.Adapter, p client.Prompt, st adviso
 		_ = advisor.MarkAdvised(dir, p.Session, st.Size, now, p.ID, adviceVersion())
 	}
 	_ = advisor.SetHandoff(dir, p.Session, parent, thread, name)
-	return fillBody(adapter, handoffDir, name, handoffHeader(parent, p.Session), ttl), true
+	return fillBody(adapter, handoffDir, name, handoffHeader(parent, p.Session), ttl, outputs), true
 }
 
 // handoffFolder is the handoff folder of the project in dir, relative when the
@@ -582,8 +629,9 @@ func handoffHeader(parent, session string) string {
 }
 
 // fillBody is the instruction body for the handoff name prefix name in
-// handoffDir, with the client's commands and, when ttl is not 0, the cache line.
-func fillBody(adapter client.Adapter, handoffDir, name, header string, ttl time.Duration) string {
+// handoffDir, with the client's commands, when ttl is not 0 the cache line,
+// and the largest tool results of outputs when there are any.
+func fillBody(adapter client.Adapter, handoffDir, name, header string, ttl time.Duration, outputs []transcript.Output) string {
 	cmds := adapter.Commands()
 	cache := ""
 	if ttl > 0 {
@@ -597,6 +645,7 @@ func fillBody(adapter client.Adapter, handoffDir, name, header string, ttl time.
 		"{header}", header,
 		"{clear}", cmds.Clear,
 		"{compact}", cmds.Compact,
+		"{outputs}", outputsList(outputs),
 	).Replace(body)
 }
 

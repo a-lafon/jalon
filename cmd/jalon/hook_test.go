@@ -292,6 +292,18 @@ func typedPrompt(promptID string) string {
 	return fmt.Sprintf(`{"type":"user","isSidechain":false,"promptId":%q,"origin":{"kind":"human"},"message":{"role":"user","content":"hi"}}`+"\n", promptID)
 }
 
+// toolUseLine is an assistant entry making one tool call, whose input holds
+// the one field given.
+func toolUseLine(id, name, field, value string) string {
+	return fmt.Sprintf(`{"type":"assistant","isSidechain":false,"message":{"role":"assistant","content":[{"type":"tool_use","id":%q,"name":%q,"input":{%q:%q}}]}}`+"\n", id, name, field, value)
+}
+
+// toolResultLine is a user entry carrying the result of one tool call, n
+// characters long.
+func toolResultLine(id string, n int) string {
+	return fmt.Sprintf(`{"type":"user","isSidechain":false,"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":%q,"content":%q}]}}`+"\n", id, strings.Repeat("x", n))
+}
+
 // programPrompt is the transcript entry of a prompt claude -p sent.
 func programPrompt(promptID string) string {
 	return fmt.Sprintf(`{"type":"user","isSidechain":false,"promptId":%q,"message":{"role":"user","content":"run the task"}}`+"\n", promptID)
@@ -1903,5 +1915,53 @@ func TestPromptHookAnswersTheHandoffCommand(t *testing.T) {
 	})
 	if strings.HasPrefix(handoffAskedPrefix, advisor.MessagePrefix) {
 		t.Error("the handoff message starts like an advice: the report would count it")
+	}
+}
+
+// bodyOfGolden is the instruction body a recorded hook output holds.
+func bodyOfGolden(t *testing.T, name string) string {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(goldenDir, name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out hookOutput
+	if err := json.Unmarshal(raw, &out); err != nil {
+		t.Fatal(err)
+	}
+	_, body, ok := strings.Cut(out.HookSpecificOutput.AdditionalContext, "before any file you write, ")
+	if !ok {
+		t.Fatalf("no opening in %s", name)
+	}
+	return body
+}
+
+// TestOutputsListFitsTheInstruction measures what the list adds to the advice,
+// against the same advice given with no tool result in reach: one sentence and
+// one line per result, before the ten-line limit the section is held to.
+func TestOutputsListFitsTheInstruction(t *testing.T) {
+	with := strings.Split(bodyOfGolden(t, "hook-crossing-outputs.golden"), "\n")
+	without := strings.Split(bodyOfGolden(t, "hook-crossing.golden"), "\n")
+	if n := len(with) - len(without); n != 5 {
+		t.Fatalf("the list adds %d lines, want 5: one sentence over two, and three results", n)
+	}
+	// The added lines sit where the bodies first differ.
+	i := 0
+	for i < len(without) && with[i] == without[i] {
+		i++
+	}
+	added := with[i : i+5]
+	if !strings.HasPrefix(added[0], "These are the largest tool results") || !strings.HasSuffix(added[1], "drops:") {
+		t.Errorf("the sentence is %q / %q", added[0], added[1])
+	}
+	for _, line := range added[2:] {
+		if !strings.HasPrefix(line, "- ") {
+			t.Errorf("result line = %q", line)
+		}
+	}
+	// What follows is the limit the section is held to, unmoved.
+	if rest := strings.Join(with[i+5:], "\n"); rest != strings.Join(without[i:], "\n") ||
+		!strings.HasPrefix(rest, "Keep the section under 10 lines") {
+		t.Errorf("the body after the list is %q", rest)
 	}
 }

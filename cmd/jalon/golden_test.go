@@ -72,7 +72,13 @@ func TestGoldenHook(t *testing.T) {
 	}{
 		"crossing":        {[]string{typedPrompt("p0"), assistantLine(50_000), assistantLine(212_000)}, "repo", 1},
 		"crossing-subdir": {[]string{typedPrompt("p0"), assistantLine(50_000), assistantLine(212_000)}, "repo/sub", 1},
-		"crossing-plain":  {[]string{typedPrompt("p0"), assistantLine(50_000), assistantLine(212_000)}, "plain", 1},
+		// Three tool results in the window: the advice names them, largest first.
+		"crossing-outputs": {[]string{typedPrompt("p0"), assistantLine(50_000),
+			toolUseLine("t1", "Read", "file_path", "/src/internal/parser/parser.go"), toolResultLine("t1", 12_000),
+			toolUseLine("t2", "Bash", "command", "go test ./..."), toolResultLine("t2", 5_000),
+			toolUseLine("t3", "Grep", "pattern", "scanTail"), toolResultLine("t3", 2_000),
+			assistantLine(212_000)}, "repo", 1},
+		"crossing-plain": {[]string{typedPrompt("p0"), assistantLine(50_000), assistantLine(212_000)}, "plain", 1},
 		// The last request wrote to the one-hour cache: the advice says how long it lasts.
 		"crossing-cache":    {[]string{typedPrompt("p0"), assistantLine(50_000), `{"type":"assistant","isSidechain":false,"message":{"usage":{"input_tokens":2,"cache_creation_input_tokens":2000,"cache_read_input_tokens":210000,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":2000}}}}` + "\n"}, "repo", 1},
 		"crossing-no-cwd":   {[]string{typedPrompt("p0"), assistantLine(50_000), assistantLine(212_000)}, "", 1},

@@ -270,3 +270,50 @@ func TestE2EHandoffCommand(t *testing.T) {
 		t.Errorf("state = %v", st)
 	}
 }
+
+// TestE2EAdviceNamesTheBiggestOutputs drives a typed session whose turns hold
+// a real Read and a real Bash, run by the client itself, and checks the advice
+// that reaches the model names both with their targets, the larger first.
+func TestE2EAdviceNamesTheBiggestOutputs(t *testing.T) {
+	// Given a typed session at 121K whose first turn reads a 24 KB file and
+	// runs a command printing 8 KB, then grows past the threshold
+	c := newClaude(t, true,
+		step{size: 121_000, tool: &toolCall{name: "Read", input: map[string]any{"file_path": "{project}/big.txt"}}},
+		step{size: 121_000, tool: &toolCall{name: "Bash", input: map[string]any{"command": "cat notes.txt"}}},
+		step{size: 121_000},
+		step{size: 221_000},
+		step{size: 321_000, section: true})
+	c.allowed = "Read,Bash"
+	write := func(name string, lines, width int) {
+		body := strings.Repeat(strings.Repeat("x", width)+"\n", lines)
+		if err := os.WriteFile(filepath.Join(c.project, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("big.txt", 200, 120)
+	write("notes.txt", 80, 100)
+	c.run("first")
+	c.run("second " + programMark)
+
+	// When the third prompt crosses the threshold
+	third := c.run("third")
+
+	// Then the instruction names both tools with their targets, as estimates
+	for _, want := range []string{
+		"their sizes estimated from",
+		"- Read " + filepath.Join(c.project, "big.txt") + ", about ",
+		"- Bash cat notes.txt, about ",
+	} {
+		if holding(third, want) == 0 {
+			t.Errorf("no request of the third prompt holds %q", want)
+		}
+	}
+	// And the larger one comes first.
+	for _, req := range third {
+		read := strings.Index(req, "- Read "+filepath.Join(c.project, "big.txt"))
+		bash := strings.Index(req, "- Bash cat notes.txt")
+		if read >= 0 && bash >= 0 && read > bash {
+			t.Error("the smaller Bash result is listed before the larger Read")
+		}
+	}
+}
