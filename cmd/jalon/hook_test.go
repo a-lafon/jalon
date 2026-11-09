@@ -460,6 +460,40 @@ func TestHookStepResetsAfterACompaction(t *testing.T) {
 	}
 }
 
+// compactedTranscript gives the session the adapter's fixture as its
+// transcript: advised at 274K, compacted to 77K, then grown back to 150K by
+// fifteen entries a person did not type, then a typed prompt.
+func compactedTranscript(t *testing.T, session string) {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("..", "..", "internal", "client", "claudecode", "testdata", "compacted-then-grown.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	appendTranscript(t, session, string(raw))
+}
+
+// A compaction no prompt measured: the work that reported back regrew the
+// context past half of what it was, so the size test cannot see the reset.
+func TestHookStepResetsAfterACompactionNoPromptMeasured(t *testing.T) {
+	dir := useHome(t)
+	cfg := configWith(t, thresholdsConfig)
+	compactedTranscript(t, "s1")
+	// What the hook recorded at the prompt before the compaction.
+	if err := advisor.Record(dir, "s1", 293_000, hookNow, "p0", true, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := advisor.MarkAdvised(dir, "s1", 274_000, hookNow, "p0", ""); err != nil {
+		t.Fatal(err)
+	}
+	if got := runPrompt(t, cfg, hookInput("s1", gitRepo(t))); got != "" {
+		t.Errorf("output = %q, want nothing: the growth since the compaction owes no advice yet", got)
+	}
+	// 150000 * 2 is above 293000, so the size test alone keeps the advice.
+	if st, _ := advisor.Load(dir, "s1"); st.Size != 150_000 || st.LastAdvised != 0 {
+		t.Errorf("state = %+v, want size 150000 and last advised 0", st)
+	}
+}
+
 func TestHookBelowTheThresholdDoesNothing(t *testing.T) {
 	_, cfg := hookState(t, "s1", 120_000)
 	repo := gitRepo(t)
