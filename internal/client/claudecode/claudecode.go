@@ -114,6 +114,9 @@ func (Adapter) Commands() client.Commands {
 	if ownedSkill("jalon-handoff") {
 		cmds.Handoff = "/jalon-handoff"
 	}
+	if ownedSkill("jalon-advise") {
+		cmds.Advise = "/jalon-advise"
+	}
 	return cmds
 }
 

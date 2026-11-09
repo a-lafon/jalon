@@ -88,6 +88,9 @@ type Commands struct {
 	// Handoff asks the prompt hook for a handoff now, e.g. "/jalon-handoff";
 	// "" when the client has no such command installed.
 	Handoff string
+	// Advise asks the prompt hook for the reset advice now, e.g.
+	// "/jalon-advise"; "" when the client has no such command installed.
+	Advise string
 }
 
 // Adapter is everything Jalon needs from one client.

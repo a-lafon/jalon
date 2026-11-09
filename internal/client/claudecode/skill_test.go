@@ -42,13 +42,13 @@ func TestSkillsFrontmatter(t *testing.T) {
 			t.Errorf("%s: {jalon} left", name)
 		}
 	}
-	if !bytes.Contains(skills[3].Content, []byte("`'/opt/my jalon/jalon' context-report -summary $ARGUMENTS`")) {
+	if !bytes.Contains(skills[4].Content, []byte("`'/opt/my jalon/jalon' context-report -summary $ARGUMENTS`")) {
 		t.Errorf("report skill does not run the binary:\n%s", skills[3].Content)
 	}
 	// A plain path stays as is; one the shell would expand is quoted, as in the hooks.
 	for exe, want := range map[string]string{"/opt/homebrew/bin/jalon": "`/opt/homebrew/bin/jalon context-report", "/opt/$HOME/jalon": "`'/opt/$HOME/jalon' context-report"} {
 		got, _ := Adapter{}.Skills(exe)
-		if !bytes.Contains(got[3].Content, []byte(want)) {
+		if !bytes.Contains(got[4].Content, []byte(want)) {
 			t.Errorf("%s: report skill lacks %q", exe, want)
 		}
 	}

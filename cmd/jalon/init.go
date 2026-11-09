@@ -37,7 +37,7 @@ func runInit(args []string, out io.Writer) error {
 	clientName := flags.String("client", defaultClient, "coding agent to install Jalon into")
 	statusLine := flags.Bool("statusline", true, "install the status line (terminal only; never replaces another one)")
 	mod := flags.Bool("mod", false, "install the client's mod in place of the status line (Claude Code 2.1.292 or later; downloads it from GitHub)")
-	skill := flags.Bool("skill", true, "install the /jalon-* commands: resume, recap, handoff, report, help (Claude Code: ~/.claude/skills/jalon-*/); -skill=false leaves them out")
+	skill := flags.Bool("skill", true, "install the /jalon-* commands: resume, recap, handoff, advise, report, help (Claude Code: ~/.claude/skills/jalon-*/); -skill=false leaves them out")
 	uninstall := flags.Bool("uninstall", false, "remove what Jalon installed")
 	dryRun := flags.Bool("dry-run", false, "print what would change, write nothing")
 	settingsPath := flags.String("settings", "", "client settings file (default: the client's user settings)")
