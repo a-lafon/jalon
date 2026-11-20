@@ -57,6 +57,8 @@ Give, as your next message and before any file you write, `
    used once for a side task.
 3. Compact: the same task continues with little state to carry. Give one ready line, in a code block: {compact} <what to keep;
    what to drop>.
+In the handoff and in the compact line, give exact values word for word (full paths, line ranges, commits, IDs, error
+messages): a reset loses them first, and the next session cannot find them again.
 While background work you started that will report back (agents, background commands) is still running, do not recommend
 a new session or {clear}: its result would reach a conversation that lost why it was started, or end with this session.
 The section then recommends a compact whose line keeps the running work, what to do with its result, and option 2's
