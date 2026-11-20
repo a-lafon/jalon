@@ -1320,6 +1320,22 @@ func TestStopHookSectionMissing(t *testing.T) {
 			t.Errorf("reason = %q", out.Reason)
 		}
 	})
+
+	// The model wrote the handoff and gave its lines to copy without the
+	// blockquote: a reminder would make it give the same lines again.
+	t.Run("handoff written and its lines given", func(t *testing.T) {
+		written := writeHandoff(t, repo, prefix+"-alpha-review-3.md")
+		last := "Handoff à jour.\n\n```\n/clear\n/jalon-resume " + written + "\n```"
+		if got := runStop(t, cfg, stopInput("s1", "p1", repo, last, false)); got != "" {
+			t.Errorf("output = %q, want nothing", got)
+		}
+		// Another handoff's path is not the lines for this one.
+		other := filepath.Join(repo, ".jalon", "handoffs", "2026-10-01", "0900-aaaaaaaa-old.md")
+		out := parseStop(t, runStop(t, cfg, stopInput("s1", "p1", repo, "Voir "+other, false)))
+		if !strings.HasPrefix(out.Reason, reminderPrefix) {
+			t.Errorf("reason = %q, want a reminder", out.Reason)
+		}
+	})
 }
 
 // The model gives the section, then writes the handoff the section recommends,
@@ -1930,6 +1946,12 @@ func TestPromptHookAnswersTheHandoffCommand(t *testing.T) {
 		ctxt := parse(t, runPrompt(t, cfg, handoffInput("s1", "p1", gitRepo(t), "/jalon-handoff"))).HookSpecificOutput.AdditionalContext
 		if !strings.Contains(ctxt, "copies once the work has reported: /jalon-handoff, alone.") {
 			t.Errorf("additionalContext = %q", ctxt)
+		}
+		// The section comes before the handoff here too: a model that wrote the
+		// file first gave the compact line without the section.
+		section, file := strings.Index(ctxt, "The section then recommends a compact"), strings.Index(ctxt, "After the section, write that handoff now")
+		if section < 0 || file < section {
+			t.Errorf("additionalContext = %q, want the section before the handoff", ctxt)
 		}
 	})
 	if strings.HasPrefix(handoffAskedPrefix, advisor.MessagePrefix) {

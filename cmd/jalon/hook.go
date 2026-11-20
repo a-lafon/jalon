@@ -59,10 +59,10 @@ Give, as your next message and before any file you write, `
    what to drop>.
 While background work you started that will report back (agents, background commands) is still running, do not recommend
 a new session or {clear}: its result would reach a conversation that lost why it was started, or end with this session.
-Write option 2's handoff now, while the whole conversation is in context, with the running work and what to do with its
-result in its current state. Then recommend a compact whose line keeps the running work, what to do with its result, and
-the handoff's full path as the record to update when the work reports. Then give, in a code block, the line the user
-copies once the work has reported: {update}.
+The section then recommends a compact whose line keeps the running work, what to do with its result, and option 2's
+handoff full path as the record to update when the work reports, and gives, in a code block, the line the user
+copies once the work has reported: {update}. After the section, write that handoff now, while the whole conversation
+is in context, with the running work and what to do with its result in its current state.
 {cache}{outputs}Keep the section under 10 lines, apart from the handoff file. Give it in this reply only: do not repeat it in later replies.`
 )
 
@@ -358,6 +358,17 @@ func runStopHook(ctx context.Context, args []string, stdin io.Reader, out io.Wri
 			if advisor.HasSection(ev.LastMessage) {
 				return nil
 			}
+			handoffDir := handoffFolder(ev.Dir)
+			written := ""
+			if st.Proposed != "" {
+				written = lastHandoff(handoffDir, st.Proposed+"-")
+			}
+			// The handoff is written and the last message gives its path, in the
+			// lines to copy, without the blockquote: a reminder would only make the
+			// model give those lines a second time.
+			if written != "" && strings.Contains(ev.LastMessage, filepath.Join(handoffDir, written)) {
+				return nil
+			}
 			// After a compaction during the turn, the advice is moot: the boundary
 			// shows it even when the work since has regrown the context past the
 			// size test.
@@ -370,10 +381,9 @@ func runStopHook(ctx context.Context, args []string, stdin io.Reader, out io.Wri
 			if turn := adapter.ReadTail(ev.Prompt, ev.ID, true, false, ""); turn.Section || !turn.Typed {
 				return nil
 			}
-			handoffDir := handoffFolder(ev.Dir)
 			reason := reminderPrefix + ", context at " + cli.TokensK(float64(st.LastAdvised)) +
 				" tokens: no message of this turn gave the section asked at its start. Do not repeat your answer.\n"
-			if written := lastHandoff(handoffDir, st.Proposed+"-"); st.Proposed != "" && written != "" {
+			if written != "" {
 				reason += "The handoff " + filepath.Join(handoffDir, written) + " is already written: do not write another file, give the section with its lines to copy for it.\n"
 			}
 			// One sentence, not the body: the model got the body at the start of the
