@@ -88,6 +88,24 @@ Prefer the status line unless you want the pole in Claude Desktop or on a row of
 
 `jalon init --uninstall` removes it with the rest; `jalon init --statusline` cannot be combined with `--mod`.
 
+## What Jalon reads and writes
+
+What Jalon reads from a transcript belongs to a format internal to Claude Code, not a published one: the usage of the last request, which gives the context size, the `compact_boundary` entry, which tells Jalon a compaction reset the conversation, and the `tool_use` and `tool_result` blocks the advice names the largest tool results from. Should that entry disappear in a later version, Jalon falls back to the size test, a size that fell under half the previous one. Any Claude Code version can change that format: the list of largest tool results then goes empty, and the advice comes without it.
+
+Jalon writes only:
+
+- **the advice**, added to the model's context:
+  - by the prompt hook, on a prompt you typed, when the threshold is crossed;
+  - by the stop hook, at the end of a turn you started, when the threshold was crossed during the turn or the reply left out the section asked for. It makes the model go on once to add the section;
+  - only in a session you typed in, not one a program started with `claude -p`. A program that resumes a session you typed in is not detected by the prompt hook;
+- **a note to keep the handoff up to date**, added by the prompt hook to the model's context on each prompt you type after the advice's handoff was written, until a compaction or the next advice;
+- **`.jalon/handoffs/`** in your project, with its `.gitignore`; the model writes the handoff files when you take that option;
+- **`~/.claude/settings.json`**, only when you run `jalon init`, with a `.jalon.bak` backup;
+- **`~/.claude/skills/jalon-*/`**, when you run `jalon init` without `--skill=false`: the five `/jalon-*` skills, which only you invoke, so their descriptions are not added to the starting context (checked with Claude Code 2.1.296 for one, 2.1.302 for five); a later `jalon init` updates them, and never replaces a skill it did not write;
+- **`~/.jalon/`**: its session state, and its config when `jalon init` sets a threshold.
+
+The one exception is the mod, when you ask for it: `jalon init --mod` runs Claude Code's `claude plugin install`, which downloads the mod from GitHub and records it in `~/.claude/settings.json`, and `jalon init --uninstall` runs `claude plugin marketplace remove jalon`. The mod itself only runs `jalon statusline` and draws its answer.
+
 ## Other clients
 
 Everything specific to Claude Code sits in `internal/client/claudecode`, behind the `client.Adapter` interface in `internal/client/client.go`: how to read the hook input, find the context size and the typed prompts, write the hook output, the reset commands, through the optional `client.Stopper` how to read a stop event and block the end of a turn, and through the optional `client.Installer` how to install the hooks. To add a client, implement that interface in `internal/client/<name>/`, register it in `cmd/jalon/clients.go`, and install `jalon hook prompt --client <name>` as that client's prompt hook, and `jalon hook stop --client <name>` as its stop hook when it has one.
