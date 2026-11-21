@@ -11,7 +11,7 @@ Jalon tells you when a long conversation is worth resetting, and has the session
 
 <p align="center"><img alt="A Claude Code session on a todo API. Asked why PATCH /todos/:id returns 500 since a deploy, the model finds the cause in the production log and ends with a quoted block starting with Jalon that recommends a compact, with a /compact line keeping the cause and dropping the log; the line is pasted and the conversation compacted. Asked to fix the bug and plan a move to SQLite for tomorrow, the model recommends a handoff, writes it and gives /clear and /jalon-resume; after them, the new conversation sums up the handoff in three points" src="assets/demo.gif" width="860"></p>
 
-*A real Claude Code session (Sonnet 5.5) on a small todo API, with `advise_tokens` lowered to 3K so the advice comes within a few prompts, and the model's work cut out. After the production log has been read, the same task goes on, so the model recommends a `/compact` that keeps the cause and drops the log. After a fix and a plan to build tomorrow, it writes a handoff, and `/jalon-resume` picks it up in a new conversation.*
+*One conversation, two moments, two resets. While the same task goes on, the model recommends a `/compact` that keeps the cause of the bug and drops the log. Before a pause until tomorrow, it writes a handoff, and `/jalon-resume` picks it up in a new conversation. A real Claude Code session (Sonnet 5.5) on a small todo API, with `advise_tokens` lowered to 3K so both come within a few prompts; in real use they would be at least 60K tokens apart.*
 
 > **Status: early.** Tested with Claude Code on macOS; the test suite also runs on Linux in CI. Expect changes between 0.x releases.
 
