@@ -1,3 +1,3 @@
 context:
-  advise_tokens: 5000
-  advise_step_tokens: 5000
+  advise_tokens: 3000
+  advise_step_tokens: 3000
