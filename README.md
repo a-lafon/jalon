@@ -9,6 +9,10 @@
 
 Jalon tells you when a long conversation is worth resetting, and has the session's own model prepare the reset: a new session, a handoff file to resume from, or a `/compact` line that names what to keep. One binary, two hooks, no daemon, no network.
 
+<p align="center"><img alt="A Claude Code session on a todo API. Asked why PATCH /todos/:id returns 500 since a deploy, the model finds the cause in the production log and ends with a quoted block starting with Jalon that recommends a compact, with a /compact line keeping the cause and dropping the log; the line is pasted and the conversation compacted. Asked to fix the bug and plan a move to SQLite for tomorrow, the model recommends a handoff, writes it and gives /clear and /jalon-resume; after them, the new conversation sums up the handoff in three points, and the status line pole drops from full to one band" src="assets/demo.gif" width="860"></p>
+
+*A real Claude Code session (Sonnet 5.5) on a small todo API, with `advise_tokens` lowered to 5K so the advice comes within a few prompts, and the model's work cut out. After the production log has been read, the same task goes on, so the model recommends a `/compact` that keeps the cause and drops the log. After a fix and a plan to build tomorrow, it writes a handoff, and `/jalon-resume` picks it up in a new conversation.*
+
 > **Status: early.** Tested with Claude Code on macOS; the test suite also runs on Linux in CI. Expect changes between 0.x releases.
 
 In five days of my own sessions, a request at 400K tokens cost three and a half times one at 100K. A coding agent resends its whole conversation on every request, so most of what you pay for, or burn from your quota, is that context being read again. Resetting on time, without losing what matters, saves those tokens: over 30 days of my sessions, resets avoided re-reading about a third of them, an estimate. It is about cost and usage limits, not better answers: in my tests a long context answered as well as a reset one up to 560K tokens, and a reset lost exact details, which the advice asks to keep word for word ([cost and quality](docs/cost-and-quality.md)). Claude Code shows how full the context is, not when a reset is worth it; Jalon does.
@@ -19,19 +23,7 @@ When a conversation's context has grown by 200K tokens above its starting size, 
 
 The advice also names the three largest tool results Jalon found, with the tool, what it acted on and a size, so the model says what its `/compact` line or its handoff drops. Those sizes are estimated from the text of the results, not measured token counts, and the list covers the recent context Jalon read, not the whole conversation.
 
-Two real Claude Code sessions on a toy project, with `advise_tokens` lowered to 10K. After reading a long log to find why an export crashed, little needs to carry over, so the model gives a `/compact` line that keeps the cause and the next step and drops the log:
-
-<img alt="The end of a Claude Code answer: a quoted block starting with Jalon recommends a compact and gives a /compact line keeping the crash's cause and the next step, dropping the raw log; the status line below shows the pole full, reset advised" src="assets/advice-compact.svg" width="720">
-
-While reconciling an export with an accountant's figures, a fix, a new finding and an open question must carry over, so the model writes a handoff and gives the lines to resume from it:
-
-<img alt="The end of a Claude Code answer: a quoted block starting with Jalon recommends a handoff, says what it carries over, and gives the /clear and resume lines to copy; the status line below shows the pole full, reset advised" src="assets/advice-handoff.svg" width="720">
-
 In a terminal you also get a one-line notice, and the status line shows a pole whose three bands fill as the context grows, full when a reset is advised: `jalon ▰▰▱ 160K`. A Claude Code mod can draw the same pole above the prompt instead, in the terminal and in Claude Desktop ([the pole above the prompt](docs/how-it-works.md#the-pole-above-the-prompt)).
-
-<img alt="The status line in a Claude Code session: the pole fills as the context grows, then says reset advised" src="assets/statusline.png" width="320">
-
-*A real Claude Code session, with `advise_tokens` lowered to 15K so the pole fills in a few prompts.*
 
 See [how it works](docs/how-it-works.md) and [handoffs](docs/handoffs.md), with [three handoffs to read](docs/handoffs.md#three-of-them-to-read).
 
